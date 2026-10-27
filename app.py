@@ -817,7 +817,7 @@ def _llm(prompt: str) -> str:
         try:
             req = urllib.request.Request(
                 "https://api.anthropic.com/v1/messages", method="POST",
-                data=json.dumps({"model": "claude-sonnet-5", "max_tokens": 2000,
+                data=json.dumps({"model": "claude-sonnet-5-5", "max_tokens": 2000,
                                  "messages": [{"role": "user", "content": prompt}]}).encode(),
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01",
                          "content-type": "application/json"})
