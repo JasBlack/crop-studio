@@ -1,0 +1,46 @@
+{
+  "1": {
+    "class_type": "VHS_LoadVideo",
+    "inputs": {
+      "video": "cropstudio_up_in.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    }
+  },
+  "2": {
+    "class_type": "UpscaleModelLoader",
+    "inputs": { "model_name": "RealESRGAN_x2.pth" }
+  },
+  "3": {
+    "class_type": "ImageUpscaleWithModelBatched",
+    "inputs": {
+      "upscale_model": ["2", 0],
+      "images": ["1", 0],
+      "per_batch": 4,
+      "downscale_ratio": 1.0,
+      "downscale_method": "lanczos",
+      "precision": "float16"
+    }
+  },
+  "5": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["3", 0],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "cropstudio/upscaled",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 17,
+      "save_metadata": false,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

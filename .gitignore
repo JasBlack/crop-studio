@@ -1,0 +1,21 @@
+# Secrets / local config
+.env
+*.key
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Packaged builds
+*.zip
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Generated next to source videos (not in repo, listed for safety)
+*.cropstudio/
+*.crop.json
+*.words.json

@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CROP STUDIO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* jas.black tool-family palette (paint.jas.black / snap.jas.black) */
+    --case: #121314; --bg: #121314; --panel: #18191b; --panel2: #222326; --line: #26272a;
+    --key: #222326; --keyon: #1b1c1e; --keyline: #303135; --keyshadow: #070708;
+    --press: rgba(0,0,0,.5); --well: #141517; --ledoff: #34353a;
+    --text: #e4e4e1; --dim: #6f7074; --muted: #8c8c88;
+    --accent: #39ff88; --accent2: #b36bff; --blue: #b36bff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+         height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  header { display: flex; align-items: baseline; gap: 14px; padding: 14px 20px 10px; }
+  header h1 { font-size: 19px; }
+  header .hint { color: var(--dim); font-size: 13px; }
+  header .spacer { flex: 1; }
+  header button, header select { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  header button.on { border-color: var(--accent); color: var(--accent); }
+  .layout { flex: 1; display: flex; min-height: 0; gap: 12px; padding: 0 12px 12px; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 10px; }
+
+  .stage { position: relative; flex: 1; background: #000; border-radius: 12px; overflow: hidden; min-height: 0; }
+  .stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .shade { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.55); pointer-events: none; }
+  #cropBox { position: absolute; border: 2px solid var(--accent); border-radius: 2px; cursor: grab;
+             box-shadow: 0 0 0 1px rgba(0,0,0,.6); touch-action: none; }
+  #cropBox:active { cursor: grabbing; }
+  #stage.tracking, #stage.tracking #cropBox, #stage.tracking .shade, #stage.tracking video { cursor: crosshair !important; }
+  #cropBox .tag { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.65); color: #b8f5c9;
+                  font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+  #cropBox .adjust { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+                     background: rgba(0,0,0,.75); border: 1px solid #444; border-radius: 8px;
+                     padding: 4px 12px; font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .safe { position: absolute; pointer-events: none; display: none; border: 1px dashed rgba(255,80,80,.75); }
+  #cropBox.showsafe .safe { display: block; }
+  .safe.t { left: 0; right: 0; top: 0; height: 10%; border-width: 0 0 1px 0; background: rgba(255,80,80,.12); }
+  .safe.b { left: 0; right: 0; bottom: 0; height: 28%; border-width: 1px 0 0 0; background: rgba(255,80,80,.12); }
+  .safe.r { right: 0; top: 10%; bottom: 28%; width: 14%; border-width: 0 0 0 1px; background: rgba(255,80,80,.08); }
+  .obzone { position: absolute; left: 0; right: 0; pointer-events: none; display: none;
+            background: repeating-linear-gradient(45deg, rgba(108,190,69,.35) 0 8px, rgba(108,190,69,.15) 8px 16px); }
+  #obTop { top: 0; } #obBottom { bottom: 0; }
+  .op-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .op-grid img { width: 100%; border-radius: 6px; cursor: pointer; border: 2px solid transparent; display: block; }
+  .op-grid img.chosen { border-color: var(--accent); }
+  .op-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .op-actions button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                       border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 13px; flex: 1; }
+  .op-actions button.primary { background: var(--blue); border-color: var(--blue); font-weight: 600; }
+  .op-actions button:disabled { opacity: .45; cursor: default; }
+  #opStatus { margin-top: 6px; font-size: 12px; color: var(--dim); min-height: 16px; }
+  #opPrompt { width: 100%; margin-top: 8px; background: var(--panel2); border: 1px solid var(--line);
+              color: var(--text); border-radius: 8px; padding: 7px 10px; font-size: 12px; }
+  .transport { display: flex; align-items: center; gap: 8px; }
+  .transport button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                      border-radius: 8px; width: 34px; height: 30px; cursor: pointer; font-size: 13px; }
+  .transport button.play { background: var(--blue); border-color: var(--blue); width: 44px; }
+  .transport .time { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  .tl-wrap { background: var(--panel); border-radius: 12px; padding: 8px 10px; }
+  #tlScroll { overflow-x: auto; overflow-y: hidden; }
+  #tlScroll::-webkit-scrollbar { height: 8px; }
+  #tlScroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  #tlInner { min-width: 100%; }
+  .tl-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--dim); }
+  .tl-bar button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                   border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  #timeline { position: relative; height: 64px; border-radius: 6px; overflow: hidden; cursor: pointer; display: flex; }
+  #timeline .seg { position: relative; height: 100%; background-size: auto 100%; background-repeat: repeat-x;
+                   border-right: 1px solid #000; flex-shrink: 0; }
+  #timeline .seg.sel { outline: 2px solid #fff; outline-offset: -2px; z-index: 2; }
+  #timeline .seg .dotline { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
+  #timeline .kf { position: absolute; top: 6px; width: 8px; height: 8px; transform: translateX(-50%) rotate(45deg);
+                  background: #fff; border: 1px solid #000; z-index: 3; }
+  #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #4ad3ff; z-index: 4; pointer-events: none; }
+  #rangeStrip { position: relative; height: 12px; margin-bottom: 4px; background: var(--panel2); border-radius: 4px; }
+  #rangeStrip .rbar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; cursor: pointer; opacity: .85; }
+  #rangeStrip .rbar:hover { opacity: 1; }
+  #rangeStrip .rmark { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; opacity: .7; }
+
+  .shorts .iorow { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+  .shorts .iorow button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                          border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+  .shorts .iorow .io { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 86px; text-align: center; }
+  .shorts .iorow #addRange { background: var(--blue); border-color: var(--blue); font-weight: 600; }
+  #rangeList { margin-top: 8px; max-height: 150px; overflow-y: auto; }
+  .rrow { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 13px; }
+  .rrow:hover { background: var(--panel2); }
+  .rrow .chip { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .rrow input { background: none; border: none; border-bottom: 1px dashed transparent; color: var(--text);
+                font-size: 13px; width: 90px; }
+  .rrow input:focus { outline: none; border-bottom-color: var(--dim); }
+  .rrow .rtimes { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; flex: 1; }
+  .rrow .icon { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 13px; }
+  .rrow .icon:hover { color: #fff; }
+  #resultList { margin-top: 8px; font-size: 13px; align-self: stretch; }
+  #resultList .resrow { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+  #resultList a { color: var(--accent); text-decoration: none; }
+  #resultList button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                       border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+
+  .side { width: 400px; display: flex; flex-direction: column; gap: 12px; min-height: 0;
+          overflow-y: auto; padding-right: 2px; }
+  .side::-webkit-scrollbar { width: 8px; }
+  .side::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  .side > .card { flex-shrink: 0; }
+  .card { background: var(--panel); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; min-height: 0; }
+  .card h2 { font-size: 16px; display: flex; align-items: center; }
+  .card h2 .count { margin-left: auto; background: var(--panel2); border-radius: 6px; padding: 1px 8px;
+                    font-size: 12px; color: var(--dim); }
+  #segList { overflow-y: auto; margin-top: 10px; flex: 1; min-height: 120px; }
+  .segrow { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+  .segrow:hover { background: var(--panel2); }
+  .segrow.sel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
+  .segrow.sel .times b { color: var(--accent); }
+  .segrow .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .segrow .times { font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+  .segrow .times b { font-weight: 600; } .segrow .times span { color: var(--dim); font-size: 12px; }
+  .segrow .gauge { flex: 1; height: 4px; background: var(--line); border-radius: 2px; position: relative; }
+  .segrow .gauge i { position: absolute; top: 0; height: 100%; border-radius: 2px; }
+  .segrow .icon { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 14px; padding: 2px 4px; }
+  .segrow .icon:hover { color: #fff; }
+  .kfpanel { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; font-size: 12px; }
+  .kfpanel .kfrow { display: flex; gap: 8px; align-items: center; padding: 2px 4px; color: var(--dim);
+                    font-variant-numeric: tabular-nums; }
+  .kfpanel .kfrow button { background: none; border: none; color: var(--dim); cursor: pointer; }
+  .kfpanel .actions { display: flex; gap: 8px; margin-top: 6px; }
+  .kfpanel .actions button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                             border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .previewCard { align-items: center; }
+  .previewCard h2 { align-self: stretch; }
+  #preview { margin-top: 10px; height: 220px; aspect-ratio: 9/16; background: #000; border-radius: 10px; }
+  #exportBtn { margin-top: 12px; width: 100%; background: var(--accent); color: #052e12; font-weight: 600;
+               border: none; border-radius: 10px; padding: 10px; cursor: pointer; font-size: 14px; }
+  #exportBtn:disabled { opacity: .5; cursor: default; }
+  #exportStatus { margin-top: 8px; font-size: 12px; color: var(--dim); align-self: stretch; text-align: center; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; align-self: stretch; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0%; transition: width .3s; }
+  #resultVideo { margin-top: 10px; height: 240px; aspect-ratio: 9/16; background: #000; border-radius: 10px; display: none; }
+
+  #opCard input { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                  border-radius: 8px; padding: 7px 10px; font-size: 12px; margin-top: 8px; }
+  .op-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+  .op-grid img { width: 100%; max-height: 165px; aspect-ratio: 9/16; object-fit: contain; background: #000;
+                 border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: transform .1s;
+                 justify-self: center; }
+  .op-grid img:hover { transform: scale(1.04); }
+  .op-grid img.chosen { border-color: var(--accent); }
+  .op-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .op-actions button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                       border-radius: 8px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+  .op-actions button.primary { background: var(--blue); border-color: var(--blue); font-weight: 600; }
+  .op-actions button:disabled { opacity: .45; cursor: default; }
+  #opStatus { font-size: 12px; color: var(--dim); margin-top: 6px; min-height: 16px; }
+
+  #lightbox { position: fixed; inset: 0; background: rgba(5,5,7,.95); display: none; z-index: 60;
+              align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+  #lightbox.open { display: flex; }
+  #lbContent { max-width: 82vw; max-height: 80vh; display: flex; align-items: center; justify-content: center; }
+  #lbContent img, #lbContent video { max-width: 82vw; max-height: 80vh; border-radius: 10px;
+                                     box-shadow: 0 8px 60px rgba(0,0,0,.8); }
+  #lbBar { display: flex; gap: 10px; align-items: center; }
+  #lbBar button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                  border-radius: 8px; padding: 8px 16px; cursor: pointer; font-size: 14px; }
+  #lbBar button.use { background: var(--accent); border-color: var(--accent); color: #052e12; font-weight: 600; }
+  #lbLabel { color: var(--dim); font-size: 13px; }
+  #lbClose { position: absolute; top: 18px; right: 24px; background: none; border: none; color: var(--dim);
+             font-size: 28px; cursor: pointer; }
+  #lbClose:hover { color: #fff; }
+
+  #loader { position: fixed; inset: 0; background: rgba(8,8,10,.92); display: flex; align-items: center;
+            justify-content: center; z-index: 50; }
+  #loader .box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 26px;
+                 width: 520px; }
+  #loader h2 { margin-bottom: 6px; }
+  #loader p { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
+  #loader input { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                  border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+  #loader .row { display: flex; gap: 10px; margin-top: 12px; }
+  #loader button { background: var(--blue); border: none; color: #fff; border-radius: 8px; padding: 9px 18px;
+                   cursor: pointer; font-weight: 600; }
+  #loadStatus { margin-top: 12px; font-size: 13px; color: var(--dim); min-height: 18px; }
+
+  /* ================= jas.black family theme (override layer) =================
+     Console-hardware language shared with paint.jas.black and snap.jas.black:
+     IBM Plex Mono micro-type, flat pressable keys with a hard bottom shadow and
+     LED dots, inset wells, green/violet accent pair, Archivo spaced-caps brand. */
+
+  body { font: 11px/1.45 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+         letter-spacing: .02em; background: var(--case); }
+
+  /* --- keys: every button becomes a flat pressable key --- */
+  button { font: 500 10px 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .06em; }
+  header button, .transport button, .tl-bar button, .op-actions button,
+  .shorts .iorow button, .kfpanel .actions button, #resultList button, #lbBar button,
+  #loader button {
+    background: var(--key); border: 1px solid var(--keyline); color: var(--text);
+    border-radius: 9px; box-shadow: 0 2px 0 var(--keyshadow);
+    transition: border-color .12s, transform .05s, box-shadow .05s;
+    text-transform: lowercase;
+  }
+  header button:hover:not(:disabled), .transport button:hover:not(:disabled),
+  .tl-bar button:hover:not(:disabled), .op-actions button:hover:not(:disabled),
+  .shorts .iorow button:hover:not(:disabled), .kfpanel .actions button:hover:not(:disabled),
+  #resultList button:hover, #lbBar button:hover, #loader button:hover {
+    border-color: var(--muted);
+  }
+  header button:active:not(:disabled), .transport button:active:not(:disabled),
+  .tl-bar button:active:not(:disabled), .op-actions button:active:not(:disabled),
+  .shorts .iorow button:active:not(:disabled), .kfpanel .actions button:active:not(:disabled),
+  #lbBar button:active, #loader button:active {
+    transform: translateY(1px); background: var(--keyon);
+    box-shadow: 0 1px 0 var(--keyshadow), inset 0 1px 3px var(--press);
+  }
+  header button:disabled, .op-actions button:disabled { opacity: .4; }
+  header button.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--keyline)); }
+
+  /* action keys: violet = do-something, solid green = GO (family convention) */
+  .transport button.play, .op-actions button.primary, .shorts .iorow #addRange, #loader button {
+    background: color-mix(in srgb, var(--accent2) 22%, var(--key));
+    border-color: color-mix(in srgb, var(--accent2) 55%, var(--keyline));
+    color: color-mix(in srgb, var(--accent2) 70%, var(--text));
+    font-weight: 600;
+  }
+  #exportBtn, #lbBar button.use, #analyzeBtn {
+    background: var(--accent) !important; border: 1px solid color-mix(in srgb, var(--accent) 80%, #000) !important;
+    color: #0b0b0c !important; font: 600 11px 'IBM Plex Mono', monospace; letter-spacing: .08em;
+    text-transform: lowercase; box-shadow: 0 2px 0 color-mix(in srgb, var(--accent) 55%, #000);
+    border-radius: 9px;
+  }
+  #exportBtn:active:not(:disabled) { transform: translateY(1px); }
+
+  /* --- header: brand + status row --- */
+  header { align-items: center; padding: 12px 18px 8px; gap: 12px; }
+  header h1 { font: 800 13px 'Archivo', sans-serif; letter-spacing: .32em; color: var(--text);
+              display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+  header h1::before { content: ''; width: 7px; height: 7px; border-radius: 50%;
+                      background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  header .hint { font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: lowercase; }
+  #saveState { font-size: 9px !important; letter-spacing: .1em; }
+
+  /* --- selects: family dropdown wells --- */
+  select, header select {
+    appearance: none; -webkit-appearance: none; height: 28px; border-radius: 8px;
+    border: 1px solid var(--keyline);
+    background: var(--well) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%238c8c88'/%3E%3C/svg%3E") no-repeat right 9px center;
+    padding: 0 24px 0 10px; font: 500 9.5px 'IBM Plex Mono', monospace; color: var(--text);
+    cursor: pointer; text-transform: lowercase;
+  }
+  select:focus { outline: none; border-color: var(--muted); }
+  select option { background: var(--panel); color: var(--text); }
+
+  /* --- inputs: wells --- */
+  #opPrompt, #opCard input, #loader input, .rrow input, .txt {
+    background: var(--well) !important; border: 1px solid var(--keyline) !important;
+    color: var(--text) !important; border-radius: 8px;
+    font: 500 10px 'IBM Plex Mono', monospace !important; letter-spacing: .04em;
+  }
+  #opPrompt:focus, #loader input:focus, #opCard input:focus { outline: none; border-color: var(--accent) !important; }
+  .rrow input { border: none !important; background: none !important; border-bottom: 1px dashed transparent !important; border-radius: 0; }
+  .rrow input:focus { border-bottom-color: var(--dim) !important; }
+  input[type=range] { accent-color: var(--accent2); }
+  input[type=checkbox] { accent-color: var(--accent); }
+
+  /* --- panels --- */
+  .card, .tl-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  .card h2 { font: 600 10px 'IBM Plex Mono', monospace; letter-spacing: .22em; text-transform: uppercase;
+             color: var(--muted); }
+  .card h2 .count { background: var(--well); border: 1px solid var(--line); border-radius: 6px;
+                    font-size: 9px; color: var(--dim); box-shadow: inset 0 1px 2px var(--press); }
+  .kfpanel { font-size: 10px; }
+  .kfpanel b { color: var(--text); font-weight: 600; letter-spacing: .08em; }
+
+  /* --- stage + crop window --- */
+  .stage { background: #0b0b0c; border: 1px solid var(--line); border-radius: 12px; }
+  #cropBox { border: 1.5px solid var(--accent); box-shadow: 0 0 0 1px rgba(0,0,0,.65), 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent); }
+  #cropBox .tag { background: rgba(11,11,12,.8); color: var(--accent); font: 600 9px 'IBM Plex Mono', monospace;
+                  letter-spacing: .14em; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  #cropBox .adjust { background: rgba(11,11,12,.85); border: 1px solid var(--keyline); border-radius: 8px;
+                     font: 500 9px 'IBM Plex Mono', monospace; letter-spacing: .14em; color: var(--dim);
+                     text-transform: lowercase; }
+  .obzone { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 26%, transparent) 0 8px,
+            color-mix(in srgb, var(--accent) 10%, transparent) 8px 16px); }
+
+  /* --- transport --- */
+  .transport { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+  .transport button { width: 36px; height: 32px; }
+  .transport button.play { width: 46px; }
+  .transport .time { font: 600 10px 'IBM Plex Mono', monospace; letter-spacing: .1em; color: var(--accent); }
+
+  /* --- timeline: inset well + silver knob playhead (snap.jas.black) --- */
+  #timeline { border-radius: 9px; background: var(--well);
+              box-shadow: inset 0 2px 5px rgba(0,0,0,.6), inset 0 -1px 0 rgba(255,255,255,.03); }
+  #timeline .seg { border-right: 1px solid rgba(0,0,0,.8); }
+  #timeline .seg.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+  #timeline .kf { background: var(--text); border-color: #000; box-shadow: 0 0 5px rgba(255,255,255,.4); }
+  #playhead { background: linear-gradient(180deg, #f4f5f7, #c9ccd4); width: 2px;
+              box-shadow: 0 0 6px rgba(255,255,255,.35); }
+  #playhead::after { content: ''; position: absolute; top: -5px; left: 50%; width: 11px; height: 11px;
+                     border-radius: 50%; transform: translateX(-50%);
+                     background: linear-gradient(145deg, #f4f5f7, #c9ccd4);
+                     box-shadow: 1px 2px 4px rgba(0,0,0,.6); }
+  #rangeStrip { background: var(--well); box-shadow: inset 0 1px 3px rgba(0,0,0,.55); border-radius: 6px; }
+  #rangeStrip .rbar { box-shadow: 0 0 8px color-mix(in srgb, var(--accent2) 30%, transparent); }
+  .tl-bar { font-size: 9px; letter-spacing: .12em; text-transform: lowercase; }
+
+  /* --- rows + gauges --- */
+  .segrow, .rrow { border-radius: 8px; font-size: 10.5px; }
+  .segrow:hover, .rrow:hover { background: var(--keyon); }
+  .segrow.sel { background: var(--keyon); box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 2px var(--press); }
+  .segrow .gauge { background: var(--well); box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+  .segrow .dot { box-shadow: 0 0 5px currentColor; }
+
+  /* --- preview + bars --- */
+  #preview, #resultVideo { border: 1px solid var(--keyline); background: var(--well);
+                           box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
+  .bar { background: var(--well); box-shadow: inset 0 1px 3px rgba(0,0,0,.6); border-radius: 4px; height: 7px; }
+  .bar i { background: linear-gradient(90deg, color-mix(in srgb, var(--accent2) 80%, #000), var(--accent2));
+           box-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 50%, transparent); border-radius: 4px; }
+  #exportBar i, .previewCard .bar i { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, #000), var(--accent));
+           box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent); }
+  #resultList a { color: var(--accent); }
+
+  /* --- outpaint grid --- */
+  .op-grid img { border: 1px solid var(--keyline); border-radius: 8px; background: var(--well); }
+  .op-grid img.chosen { border: 2px solid var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent); }
+  #opStatus, #suggestStatus, #exportStatus, #loadStatus { font-size: 9.5px; letter-spacing: .08em; }
+
+  /* --- lightbox --- */
+  #lightbox { background: rgba(11,11,12,.96); }
+  #lbContent img, #lbContent video { border: 1px solid var(--line); border-radius: 12px; }
+  #lbLabel { font-size: 10px; letter-spacing: .14em; text-transform: lowercase; }
+
+  /* --- loader: landing console --- */
+  #loader { background: rgba(11,11,12,.94); }
+  #loader .box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+                 box-shadow: 0 20px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.03); }
+  #loader h2 { font: 800 15px 'Archivo', sans-serif; letter-spacing: .32em; color: var(--text);
+               display: flex; align-items: center; gap: 10px; }
+  #loader h2::before { content: ''; width: 8px; height: 8px; border-radius: 50%;
+                       background: var(--accent); box-shadow: 0 0 9px var(--accent); }
+  #loader p { font-size: 10px; letter-spacing: .06em; line-height: 1.7; }
+  #loader button { padding: 10px 20px; border-radius: 9px; }
+
+  /* long helper texts truncate instead of wrapping into columns */
+  header .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  .tl-bar > span:not([style]) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+
+  /* keys never wrap their labels */
+  header button, .transport button, .tl-bar button, .op-actions button,
+  .shorts .iorow button, .kfpanel .actions button, #loader button { white-space: nowrap; }
+  header { flex-wrap: nowrap; }
+  header button { padding: 5px 10px; }
+
+  /* --- scrollbars --- */
+  .side, #segList, #rangeList { scrollbar-width: thin; scrollbar-color: var(--keyline) transparent; }
+  .side::-webkit-scrollbar, #segList::-webkit-scrollbar, #rangeList::-webkit-scrollbar { width: 4px; }
+  .side::-webkit-scrollbar-thumb, #segList::-webkit-scrollbar-thumb { background: var(--keyline); }
+  #tlScroll::-webkit-scrollbar { height: 5px; }
+  #tlScroll::-webkit-scrollbar-thumb { background: var(--keyline); }
+</style>
+</head>
+<body>
+<header>
+  <h1>CROP STUDIO</h1>
+  <span class="hint">position the crop &middot; segments come from detected cuts &middot; <span id="ver" style="opacity:.6"></span></span>
+  <span class="spacer"></span>
+  <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
+  <button id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>
+  <span id="saveState" style="color:var(--dim);font-size:12px"></span>
+  <button id="saveBtn" title="Save edits now (Ctrl+S) — also auto-saves">Save</button>
+  <button id="saveAsBtn" title="Save a named snapshot of this project">Save as&hellip;</button>
+  <select id="projectSel" title="Load a saved snapshot"><option value="">Load&hellip;</option></select>
+  <select id="aspectSel" title="Output aspect">
+    <option value="9:16">9:16</option><option value="1:1">1:1</option><option value="4:5">4:5</option>
+  </select>
+  <button id="safeBtn" title="Show platform UI safe zones">Safe zones</button>
+  <button id="openBtn">Open video</button>
+</header>
+
+<div class="layout">
+  <div class="main">
+    <div class="stage" id="stage">
+      <video id="video"></video>
+      <div class="shade" id="shadeL"></div>
+      <div class="shade" id="shadeR"></div>
+      <div class="shade" id="shadeT"></div>
+      <div class="shade" id="shadeB"></div>
+      <div id="cropBox"><span class="tag" id="cropTag">9:16</span><span class="adjust">&#10021; Adjust</span>
+        <div class="safe t"></div><div class="safe b"></div><div class="safe r"></div>
+        <div class="obzone" id="obTop"></div><div class="obzone" id="obBottom"></div>
+      </div>
+    </div>
+    <div class="transport">
+      <button id="prevSeg">&#9664;&#9664;</button>
+      <button id="playBtn" class="play">&#9654;</button>
+      <button id="nextSeg">&#9654;&#9654;</button>
+      <button id="stepB">&#10096;</button>
+      <button id="stepF">&#10097;</button>
+      <button id="trackClickBtn" title="Click a point on the subject — SAM 3.1 / optical flow keeps it framed" style="width:auto;padding:0 10px">&#127919; Track subject</button>
+      <span style="margin-left:14px;color:var(--dim);font-size:12px">Zoom</span>
+      <input type="range" id="zoomSlider" min="0.4" max="2.5" step="0.05" value="1" style="width:150px" title="Below 1.0 the window extends outside the frame — outpaint territory">
+      <span id="zoomVal" style="color:var(--dim);font-size:12px;min-width:34px">1.00x</span>
+      <span class="time" id="timeLabel">0:00.0 / 0:00.0</span>
+    </div>
+    <div class="tl-wrap">
+      <div class="tl-bar">
+        <button id="cutBtn">&#9986; Cut at playhead</button>
+        <span>click to seek &middot; Ctrl+wheel or buttons to zoom timeline</span>
+        <span style="margin-left:auto"></span>
+        <button id="tlZoomOut" title="Zoom out">&minus;</button>
+        <button id="tlZoomIn" title="Zoom in">+</button>
+        <button id="tlZoomFit" title="Fit whole timeline">Fit</button>
+      </div>
+      <div id="tlScroll"><div id="tlInner">
+        <div id="rangeStrip"></div>
+        <div id="timeline"><div id="playhead"></div></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card" style="flex:1 0 auto; min-height:230px; max-height:34vh">
+      <h2>Crop Positions <span class="count" id="segCount">0</span></h2>
+      <div id="segList"></div>
+      <div class="kfpanel" id="kfPanel"></div>
+    </div>
+    <div class="card previewCard">
+      <h2>Preview (9:16)</h2>
+      <canvas id="preview" width="270" height="480"></canvas>
+      <label style="margin-top:10px;font-size:13px;color:var(--dim);display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" id="captionsChk"> Burn auto-captions (Whisper, first run transcribes)
+      </label>
+      <button id="exportBtn">Export 9:16 video</button>
+      <div class="bar" id="exportBar" style="display:none"><i></i></div>
+      <div id="exportStatus"></div>
+      <div id="resultList"></div>
+      <video id="resultVideo" controls></video>
+    </div>
+    <div class="card" id="opCard">
+      <h2>Outpaint <span class="count" id="opState">idle</span></h2>
+      <input id="opPrompt" value="background" placeholder="Style prompt (e.g. colourful pastel painting)" spellcheck="false">
+      <div class="op-actions">
+        <button id="opGenBtn" class="primary">&#10024; Outpaint</button>
+        <input type="number" id="opCount" min="1" max="8" value="4" title="Number of options"
+               style="width:54px;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px">
+        <button id="opUploadBtn" title="Use your own outpainted image as an option">&#8682; Upload</button>
+        <button id="opCancelBtn" style="display:none" title="Stop waiting and reset this segment's job">&#9632; Cancel</button>
+      </div>
+      <input type="file" id="opFileInput" accept="image/png,image/jpeg,image/webp" style="display:none">
+      <div class="op-grid" id="opGrid"></div>
+      <div class="op-actions" id="opVideoRow" style="display:none">
+        <button id="opVideoBtn" class="primary">&#127916; Turn into video</button>
+        <button id="opDiscardBtn">&#10005; Discard</button>
+      </div>
+      <div id="opRenders"></div>
+      <div class="bar" id="opBar" style="display:none"><i></i></div>
+      <div id="opStatus"></div>
+    </div>
+    <div class="card shorts">
+      <h2>Shorts <span class="count" id="rangeCount">0</span></h2>
+      <div class="iorow">
+        <button id="setIn" title="Mark start at playhead (I)">&#10647; In</button>
+        <span class="io" id="ioLabel">&ndash; / &ndash;</span>
+        <button id="setOut" title="Mark end at playhead (O)">Out &#10648;</button>
+        <button id="addRange">+ Add</button>
+        <button id="suggestBtn" title="AI-suggest shorts (+hooks) from the transcript">&#10024; Suggest</button>
+      </div>
+      <div id="suggestStatus" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+      <div id="rangeList"></div>
+    </div>
+  </div>
+</div>
+
+<div id="lightbox">
+  <button id="lbClose">&#10005;</button>
+  <div id="lbContent"></div>
+  <div id="lbBar">
+    <button id="lbPrev">&#8592;</button>
+    <span id="lbLabel"></span>
+    <button id="lbNext">&#8594;</button>
+    <button id="lbUse" class="use">&#10003; Use this option</button>
+  </div>
+</div>
+
+<div id="loader">
+  <div class="box">
+    <h2>CROP STUDIO <span id="verLoader" style="font-size:9px;color:var(--dim);letter-spacing:.1em"></span></h2>
+    <p>Pick a video from this machine. Cuts are detected automatically and each
+       segment gets an auto-framed 9:16 crop (faces prioritized). Adjust, then export.</p>
+    <input id="pathInput" placeholder="C:\Users\User\Downloads\my_video.mp4  (or use Browse)" spellcheck="false">
+    <div class="row">
+      <button id="browseBtn">&#128193; Browse&hellip;</button>
+      <button id="analyzeBtn">Open &amp; analyze</button>
+    </div>
+    <div id="loadStatus"></div>
+    <div class="bar"><i id="loadBar"></i></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const COLORS = ['#22c55e','#3b82f6','#a855f7','#f97316','#ec4899','#14b8a6','#eab308','#ef4444'];
+const ASPECTS = {'9:16': [1080, 1920], '1:1': [1080, 1080], '4:5': [1080, 1350]};
+const video = $('video'), stage = $('stage'), cropBox = $('cropBox');
+let project = null;      // {meta, segments, ranges}
+let sel = 0;
+let aspectKey = '9:16';
+let aspect = 1080/1920;  // target aspect (w/h)
+let dragging = false, dragState = null;   // {c, y} while dragging
+let saveTimer = null;
+
+const fmt = t => { t = Math.max(0, t); const m = Math.floor(t/60), s = t - m*60;
+  return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); };
+const fmtS = t => { const m = Math.floor(t/60), s = Math.round(t - m*60);
+  return m + ':' + (s < 10 ? '0' : '') + s; };
+
+// ---------- geometry ----------
+function contentRect() {  // displayed video content area inside stage (object-fit: contain)
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+  const scale = Math.min(sw / vw, sh / vh);
+  const w = vw * scale, h = vh * scale;
+  return { x: (sw - w) / 2, y: (sh - h) / 2, w, h };
+}
+function cropFracs(z) {  // crop window size as fraction of source, at zoom z (z<1 exceeds frame)
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+  z = Math.max(0.4, z || 1);
+  let wh = vh / z;                 // window height in source px
+  let ww = wh * aspect;
+  if (ww > vw) { ww = vw; wh = ww / aspect; }
+  return { fw: ww / vw, fh: wh / vh };
+}
+function cropFrac() { return cropFracs(1).fw; }  // kept for older call sites
+
+// ---------- segments / keyframes ----------
+const segs = () => project ? project.segments : [];
+function segAt(t) {
+  const list = segs();
+  for (let i = list.length - 1; i >= 0; i--) if (t >= list[i].start - 1e-6) return i;
+  return 0;
+}
+const kfY = k => k.y === undefined ? 0.5 : k.y;
+const kfZ = k => k.z === undefined ? 1.0 : Math.max(0.4, k.z);
+function stateAt(t) {   // {c, y, z} interpolated at time t
+  let st;
+  const s = segs()[segAt(t)];
+  if (!s || !s.keyframes.length) st = {c: 0.5, y: 0.5, z: 1};
+  else {
+    const kfs = s.keyframes;
+    const lerpAll = (a, b, f) => ({c: a.c + f*(b.c - a.c), y: kfY(a) + f*(kfY(b) - kfY(a)), z: kfZ(a) + f*(kfZ(b) - kfZ(a))});
+    if (t <= kfs[0].t) st = {c: kfs[0].c, y: kfY(kfs[0]), z: kfZ(kfs[0])};
+    else if (t >= kfs[kfs.length-1].t) { const k = kfs[kfs.length-1]; st = {c: k.c, y: kfY(k), z: kfZ(k)}; }
+    else {
+      st = {c: kfs[0].c, y: kfY(kfs[0]), z: kfZ(kfs[0])};
+      for (let i = 0; i < kfs.length - 1; i++) {
+        if (t >= kfs[i].t && t <= kfs[i+1].t) {
+          st = lerpAll(kfs[i], kfs[i+1], (t - kfs[i].t) / (kfs[i+1].t - kfs[i].t || 1));
+          break;
+        }
+      }
+    }
+  }
+  if (dragging && dragState) { st.c = dragState.c; st.y = dragState.y; }
+  return st;
+}
+function clampState(st) {
+  const {fw, fh} = cropFracs(st.z);
+  st.c = fw >= 1 ? 0.5 : Math.max(fw/2, Math.min(1 - fw/2, st.c));
+  st.y = fh >= 1 ? 0.5 : Math.max(fh/2, Math.min(1 - fh/2, st.y));
+  return st;
+}
+function setCrop(t, patch) {  // patch: any of {c, y, z} — applied to keyframe at/near t
+  const s = segs()[segAt(t)];
+  if (!s) return;
+  pushUndo('crop');
+  const cur = clampState({...stateAt(t), ...patch});
+  const apply = k => { k.c = +cur.c.toFixed(4); k.y = +cur.y.toFixed(4); k.z = +cur.z.toFixed(3); };
+  if (s.keyframes.length === 1) apply(s.keyframes[0]);
+  else {
+    const near = s.keyframes.find(k => Math.abs(k.t - t) < 0.15);
+    if (near) apply(near);
+    else {
+      const k = {t: +t.toFixed(3)}; apply(k);
+      s.keyframes.push(k); s.keyframes.sort((a,b)=>a.t-b.t);
+    }
+  }
+  scheduleSave(); renderSide(); renderTimelineKfs();
+}
+// ---------- undo / redo ----------
+const undoStack = [], redoStack = [];
+let lastPush = {tag: null, at: 0};
+function snapState() {
+  return structuredClone({segments: project.segments, ranges: project.ranges || [], sel});
+}
+function pushUndo(tag) {
+  if (!project) return;
+  const now = Date.now();
+  if (tag && tag === lastPush.tag && now - lastPush.at < 600) { lastPush.at = now; return; }
+  lastPush = {tag, at: now};
+  undoStack.push(snapState());
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoButtons();
+}
+function restoreState(st) {
+  project.segments = st.segments;
+  project.ranges = st.ranges;
+  sel = Math.min(st.sel, st.segments.length - 1);
+  scheduleSave();
+  renderSide(); renderTimeline(); renderRanges(); renderIo();
+}
+function undo() {
+  if (!undoStack.length || !project) return;
+  redoStack.push(snapState());
+  restoreState(undoStack.pop());
+  updateUndoButtons();
+}
+function redo() {
+  if (!redoStack.length || !project) return;
+  undoStack.push(snapState());
+  restoreState(redoStack.pop());
+  updateUndoButtons();
+}
+function updateUndoButtons() {
+  $('undoBtn').disabled = !undoStack.length;
+  $('redoBtn').disabled = !redoStack.length;
+}
+$('undoBtn').onclick = undo;
+$('redoBtn').onclick = redo;
+
+function doSave() {
+  clearTimeout(saveTimer); saveTimer = null;
+  $('saveState').textContent = 'Saving…';
+  return fetch('/api/save', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({segments: segs(), ranges: ranges()})})
+    .then(r => { $('saveState').textContent = r.ok
+      ? '✓ Saved ' + new Date().toLocaleTimeString() : 'Save failed'; })
+    .catch(() => { $('saveState').textContent = 'Save failed'; });
+}
+function scheduleSave() {
+  $('saveState').textContent = 'Unsaved changes…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 600);
+}
+
+// ---------- rendering ----------
+function renderOverlay() {
+  if (!project || !video.videoWidth) return;
+  const r = contentRect();
+  const st = clampState(stateAt(video.currentTime));
+  const {fw, fh} = cropFracs(st.z);
+  const w = fw * r.w, h = fh * r.h;
+  const x = r.x + (st.c - fw/2) * r.w, y = r.y + (st.y - fh/2) * r.h;
+  cropBox.style.left = x + 'px'; cropBox.style.top = y + 'px';
+  cropBox.style.width = w + 'px'; cropBox.style.height = h + 'px';
+  $('shadeL').style.left = r.x + 'px'; $('shadeL').style.width = Math.max(0, x - r.x) + 'px';
+  $('shadeL').style.top = r.y + 'px'; $('shadeL').style.height = r.h + 'px';
+  $('shadeR').style.left = (x + w) + 'px';
+  $('shadeR').style.width = Math.max(0, r.x + r.w - x - w) + 'px';
+  $('shadeR').style.top = r.y + 'px'; $('shadeR').style.height = r.h + 'px';
+  $('shadeT').style.left = x + 'px'; $('shadeT').style.width = w + 'px';
+  $('shadeT').style.top = r.y + 'px'; $('shadeT').style.height = Math.max(0, y - r.y) + 'px';
+  $('shadeB').style.left = x + 'px'; $('shadeB').style.width = w + 'px';
+  $('shadeB').style.top = (y + h) + 'px'; $('shadeB').style.height = Math.max(0, r.y + r.h - y - h) + 'px';
+  if (!dragging && document.activeElement !== $('zoomSlider')) {
+    $('zoomSlider').value = st.z; $('zoomVal').textContent = st.z.toFixed(2) + 'x';
+  }
+  const obT = Math.max(0, r.y - y), obB = Math.max(0, (y + h) - (r.y + r.h));
+  $('obTop').style.height = obT + 'px'; $('obTop').style.display = obT > 1 ? 'block' : 'none';
+  $('obBottom').style.height = obB + 'px'; $('obBottom').style.display = obB > 1 ? 'block' : 'none';
+}
+function renderPreview() {
+  const cv = $('preview'), ctx = cv.getContext('2d');
+  if (!video.videoWidth) return;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const st = clampState(stateAt(video.currentTime));
+  const {fw, fh} = cropFracs(st.z);
+  const sw = fw * vw, sh = fh * vh;
+  const sx = (st.c - fw/2) * vw, sy = (st.y - fh/2) * vh;
+  ctx.fillStyle = '#6CBE45';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  const ix0 = Math.max(0, sx), iy0 = Math.max(0, sy);
+  const ix1 = Math.min(vw, sx + sw), iy1 = Math.min(vh, sy + sh);
+  if (ix1 > ix0 && iy1 > iy0) {
+    const kx = cv.width / sw, ky = cv.height / sh;
+    ctx.drawImage(video, ix0, iy0, ix1 - ix0, iy1 - iy0,
+                  (ix0 - sx) * kx, (iy0 - sy) * ky, (ix1 - ix0) * kx, (iy1 - iy0) * ky);
+  }
+}
+function renderTimeline() {
+  const tl = $('timeline'); tl.innerHTML = '<div id="playhead"></div>';
+  const dur = project.meta.duration;
+  segs().forEach((s, i) => {
+    const d = document.createElement('div');
+    d.className = 'seg' + (i === sel ? ' sel' : '');
+    d.style.width = ((s.end - s.start) / dur * 100) + '%';
+    if (s.thumb) d.style.backgroundImage = `url(${s.thumb})`;
+    const line = document.createElement('div');
+    line.className = 'dotline'; line.style.background = COLORS[i % COLORS.length];
+    d.appendChild(line);
+    d.dataset.i = i;
+    tl.appendChild(d);
+  });
+  renderTimelineKfs();
+}
+function renderTimelineKfs() {
+  const tl = $('timeline');
+  tl.querySelectorAll('.kf').forEach(e => e.remove());
+  const s = segs()[sel]; if (!s) return;
+  const dur = project.meta.duration;
+  if (s.keyframes.length < 2) return;
+  s.keyframes.forEach(k => {
+    const d = document.createElement('div');
+    d.className = 'kf'; d.style.left = (k.t / dur * 100) + '%';
+    tl.appendChild(d);
+  });
+}
+function renderSide() {
+  $('segCount').textContent = segs().length;
+  const list = $('segList'); list.innerHTML = '';
+  segs().forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'segrow' + (i === sel ? ' sel' : '');
+    const color = COLORS[i % COLORS.length];
+    const c0 = s.keyframes[0].c, tracked = s.keyframes.length > 1;
+    const opBadge = s.outpaint
+      ? (s.outpaint.status === 'video_ready' ? '<span title="Outpainted video ready">&#129001;</span>'
+         : '<span title="Outpaint in progress / options ready">&#128993;</span>')
+      : '';
+    row.innerHTML = `
+      <span class="dot" style="background:${color}"></span>
+      <span class="times"><b>${fmtS(s.start)}</b> <span>&mdash; ${fmtS(s.end)}</span></span>${opBadge}
+      <span class="gauge"><i style="background:${color};left:${Math.max(0,(c0-0.14)*100)}%;width:28%"></i></span>
+      <button class="icon track" title="Auto-track subject">&#10227;</button>
+      <button class="icon del" title="Delete (merge into previous)">&#128465;</button>`;
+    row.querySelector('.gauge i').style.opacity = tracked ? 0.5 : 1;
+    row.onclick = e => {
+      if (e.target.classList.contains('track')) { autoTrack(i); return; }
+      if (e.target.classList.contains('del')) { removeSeg(i); return; }
+      selectSeg(i, true);
+    };
+    list.appendChild(row);
+  });
+  renderKfPanel();
+  renderOpCard();
+}
+function renderKfPanel() {
+  const s = segs()[sel], p = $('kfPanel');
+  if (!s) { p.innerHTML = ''; return; }
+  let html = `<b>Segment ${sel + 1}</b> &middot; ${s.keyframes.length} keyframe${s.keyframes.length>1?'s':''}`;
+  if (s.track_job && s.track_job.status) {
+    const tj = s.track_job;
+    html += `<div class="kfrow" style="color:${tj.status === 'error' ? '#ef4444' : 'var(--accent)'}">` +
+            `${tj.status === 'running' ? '&#8987;' : tj.status === 'error' ? '&#10007;' : '&#127919;'} ${tj.message || tj.status}</div>`;
+  }
+  if (s.keyframes.length > 1) {
+    html += s.keyframes.map((k, j) =>
+      `<div class="kfrow"><span>&#9670; ${fmt(k.t)}</span><span>pos ${(k.c*100).toFixed(0)}%${kfZ(k) > 1.01 ? ' &middot; ' + kfZ(k).toFixed(2) + 'x' : ''}</span>
+       <button data-j="${j}" class="kfgo">&#8594; go</button>
+       <button data-j="${j}" class="kfdel">&#10005;</button></div>`).join('');
+  }
+  html += `<div class="actions">
+    <button id="addKf">+ Keyframe at playhead</button>
+    <button id="clearKf">Reset to single</button></div>`;
+  p.innerHTML = html;
+  p.querySelectorAll('.kfgo').forEach(b => b.onclick = () => { video.currentTime = s.keyframes[+b.dataset.j].t; });
+  p.querySelectorAll('.kfdel').forEach(b => b.onclick = () => {
+    if (s.keyframes.length > 1) { pushUndo(); s.keyframes.splice(+b.dataset.j, 1); scheduleSave(); renderSide(); renderTimelineKfs(); }
+  });
+  $('addKf').onclick = () => {
+    pushUndo();
+    const t = video.currentTime, st = stateAt(t);
+    s.keyframes.push({t: +t.toFixed(3), c: +st.c.toFixed(4), y: +st.y.toFixed(4), z: +st.z.toFixed(3)});
+    s.keyframes.sort((a,b)=>a.t-b.t); scheduleSave(); renderSide(); renderTimelineKfs();
+  };
+  $('clearKf').onclick = () => {
+    pushUndo();
+    const st = stateAt(video.currentTime);
+    s.keyframes = [{t: s.start, c: +st.c.toFixed(4), y: +st.y.toFixed(4), z: +st.z.toFixed(3)}];
+    scheduleSave(); renderSide(); renderTimelineKfs();
+  };
+}
+function selectSeg(i, seek) {
+  sel = Math.max(0, Math.min(segs().length - 1, i));
+  if (seek) video.currentTime = segs()[sel].start + 0.01;
+  renderSide(); renderTimeline();
+}
+
+// ---------- segment ops ----------
+function removeSeg(i) {
+  const list = segs();
+  if (list.length < 2) return;
+  pushUndo();
+  if (i === 0) { list[1].start = list[0].start; }
+  else { list[i-1].end = list[i].end; }
+  list.splice(i, 1);
+  list.forEach((s, j) => s.id = j);
+  if (sel >= list.length) sel = list.length - 1;
+  scheduleSave(); renderSide(); renderTimeline();
+}
+function cutAtPlayhead() {
+  const t = video.currentTime, i = segAt(t), s = segs()[i];
+  if (t - s.start < 0.15 || s.end - t < 0.15) return;
+  pushUndo();
+  const st = stateAt(t);
+  const kf = ts => ({t: +ts.toFixed(3), c: +st.c.toFixed(4), y: +st.y.toFixed(4), z: +st.z.toFixed(3)});
+  const right = { id: 0, start: +t.toFixed(3), end: s.end, thumb: s.thumb, keyframes: [kf(t)] };
+  s.end = +t.toFixed(3);
+  s.keyframes = s.keyframes.filter(k => k.t < t);
+  if (!s.keyframes.length) s.keyframes = [kf(s.start)];
+  segs().splice(i + 1, 0, right);
+  segs().forEach((x, j) => x.id = j);
+  selectSeg(i + 1, false);
+  scheduleSave(); renderTimeline(); renderSide();
+}
+async function autoTrack(i) {
+  const s = segs()[i];
+  const row = $('segList').children[i];
+  if (row) row.style.opacity = 0.5;
+  const res = await fetch('/api/track', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({start: s.start, end: s.end})});
+  const data = await res.json();
+  if (data.keyframes) {
+    pushUndo();
+    const y0 = kfY(s.keyframes[0]), z0 = kfZ(s.keyframes[0]);  // keep manual y/zoom
+    s.keyframes = data.keyframes.map(k => ({...k, y: y0, z: z0}));
+    scheduleSave();
+  }
+  if (row) row.style.opacity = 1;
+  renderSide(); renderTimelineKfs();
+}
+
+// ---------- shorts (manual export ranges) ----------
+let pendingIn = null, pendingOut = null;
+const ranges = () => { if (project && !project.ranges) project.ranges = []; return project ? project.ranges : []; };
+function renderIo() {
+  $('ioLabel').textContent = (pendingIn === null ? '–' : fmt(pendingIn)) + ' / ' +
+                             (pendingOut === null ? '–' : fmt(pendingOut));
+}
+function renderRanges() {
+  $('rangeCount').textContent = ranges().length;
+  const list = $('rangeList'); list.innerHTML = '';
+  ranges().forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'rrow';
+    const color = COLORS[i % COLORS.length];
+    const opts = ['9:16', '1:1', '4:5'].map(a =>
+      `<option value="${a}" ${(r.aspect || aspectKey) === a ? 'selected' : ''}>${a}</option>`).join('');
+    const hook = (r.hook_start !== undefined && r.hook_start !== null)
+      ? `<span title="Hook ${fmt(r.hook_start)}–${fmt(r.hook_end)} — plays first as tease, replays in place as payoff" style="cursor:help">&#129693;</span>` : '';
+    row.innerHTML = `
+      <span class="chip" style="background:${color}"></span>
+      <input value="${r.name}" spellcheck="false">
+      <span class="rtimes">${fmt(r.start)} &ndash; ${fmt(r.end)} &middot; ${(r.end - r.start).toFixed(1)}s</span>${hook}
+      <select class="rasp" title="Aspect for this short"
+        style="background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:11px">${opts}</select>
+      <button class="icon go" title="Play from start">&#9654;</button>
+      <button class="icon del" title="Remove">&#10005;</button>`;
+    row.querySelector('input').onchange = e => { pushUndo(); r.name = e.target.value || `short-${i+1}`; scheduleSave(); };
+    row.querySelector('.rasp').onchange = e => { pushUndo(); r.aspect = e.target.value; scheduleSave(); };
+    row.querySelector('.go').onclick = () => { video.currentTime = r.start; video.play(); };
+    row.querySelector('.del').onclick = () => { pushUndo(); ranges().splice(i, 1); scheduleSave(); renderRanges(); };
+    list.appendChild(row);
+  });
+  renderRangeStrip();
+  $('exportBtn').textContent = ranges().length
+    ? `Export ${ranges().length} short${ranges().length > 1 ? 's' : ''}`
+    : 'Export 9:16 video';
+}
+function renderRangeStrip() {
+  const strip = $('rangeStrip'); strip.innerHTML = '';
+  if (!project) return;
+  const dur = project.meta.duration;
+  ranges().forEach((r, i) => {
+    const b = document.createElement('div');
+    b.className = 'rbar';
+    b.style.left = (r.start / dur * 100) + '%';
+    b.style.width = ((r.end - r.start) / dur * 100) + '%';
+    b.style.background = COLORS[i % COLORS.length];
+    b.title = `${r.name}  ${fmt(r.start)}–${fmt(r.end)}`;
+    b.onclick = () => { video.currentTime = r.start; };
+    strip.appendChild(b);
+  });
+  [pendingIn, pendingOut].forEach(t => {
+    if (t === null) return;
+    const m = document.createElement('div');
+    m.className = 'rmark'; m.style.left = (t / dur * 100) + '%';
+    strip.appendChild(m);
+  });
+}
+$('setIn').onclick = () => { pendingIn = +video.currentTime.toFixed(3);
+  if (pendingOut !== null && pendingOut <= pendingIn) pendingOut = null; renderIo(); renderRangeStrip(); };
+$('setOut').onclick = () => { pendingOut = +video.currentTime.toFixed(3);
+  if (pendingIn !== null && pendingOut <= pendingIn) pendingIn = null; renderIo(); renderRangeStrip(); };
+let suggestTimer = null;
+$('suggestBtn').onclick = async () => {
+  if (!project) return;
+  $('suggestBtn').disabled = true;
+  $('suggestStatus').textContent = 'Starting...';
+  await fetch('/api/suggest_shorts', POSTJSON({n: 3}));
+  if (suggestTimer) clearInterval(suggestTimer);
+  suggestTimer = setInterval(async () => {
+    try {
+      const st = await (await fetch('/api/status')).json();
+      const sg = st.suggest || {};
+      $('suggestStatus').textContent = sg.message || '';
+      if (sg.status === 'done' || sg.status === 'error') {
+        clearInterval(suggestTimer); suggestTimer = null;
+        $('suggestBtn').disabled = false;
+        if (sg.status === 'done' && st.ranges) {
+          pushUndo();
+          project.ranges = st.ranges;
+          renderRanges();
+        }
+      }
+    } catch (e) {}
+  }, 2000);
+};
+$('addRange').onclick = () => {
+  if (pendingIn === null || pendingOut === null || pendingOut <= pendingIn) return;
+  pushUndo();
+  ranges().push({start: pendingIn, end: pendingOut, name: `short-${ranges().length + 1}`});
+  ranges().sort((a, b) => a.start - b.start);
+  pendingIn = pendingOut = null;
+  renderIo(); renderRanges(); scheduleSave();
+};
+
+// ---------- outpaint ----------
+const POSTJSON = body => ({method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+let opPollTimer = null;
+function opInfo() { const s = segs()[sel]; return s ? (s.outpaint || null) : null; }
+function renderOpCard() {
+  const op = opInfo();
+  const st = op ? op.status : 'idle';
+  $('opState').textContent = st + (op && op.mock ? ' · MOCK' : '');
+  const grid = $('opGrid'); grid.innerHTML = '';
+  if (op && op.options) {
+    op.options.forEach((_, i) => {
+      const img = document.createElement('img');
+      img.src = `/api/outpaint/file?seg=${sel}&i=${i}`;
+      if (op.chosen === i) img.classList.add('chosen');
+      img.title = 'Option ' + (i + 1) + ' — click to inspect';
+      img.onclick = () => openLightbox('image', i);
+      grid.appendChild(img);
+    });
+  }
+  const busy = st === 'generating' || st === 'video_generating';
+  $('opVideoRow').style.display = (op && op.options) ? 'flex' : 'none';
+  $('opVideoBtn').disabled = busy || !op || op.chosen === null || op.chosen === undefined;
+  const nVids = (op && op.videos) ? op.videos.length : 0;
+  $('opVideoBtn').innerHTML = nVids ? '&#127916; Render another' : '&#127916; Turn into video';
+  const rend = $('opRenders'); rend.innerHTML = '';
+  if (op && op.videos && op.videos.length) {
+    op.videos.forEach((v, i) => {
+      const row = document.createElement('div');
+      row.className = 'kfrow';
+      const active = (op.active_video === undefined ? op.videos.length - 1 : op.active_video) === i;
+      row.innerHTML = `<label style="cursor:pointer;display:flex;gap:6px;align-items:center">
+          <input type="radio" name="opRender" ${active ? 'checked' : ''}> Render ${i + 1}${v.mock ? ' · MOCK' : ''}
+          ${active ? '<span style="color:var(--accent)">— used at export</span>' : ''}</label>
+        <button class="icon" title="Watch">&#9654;</button>`;
+      row.querySelector('input').onchange = async () => {
+        await fetch('/api/outpaint/usevideo', POSTJSON({seg: sel, index: i}));
+        op.active_video = i; op.video = v.file; renderOpCard();
+      };
+      row.querySelector('button').onclick = () => openLightbox('video', i);
+      rend.appendChild(row);
+    });
+  }
+  $('opGenBtn').disabled = busy || !project;
+  $('opUploadBtn').disabled = busy || !project;
+  $('opCancelBtn').style.display = busy ? 'inline-block' : 'none';
+  $('opBar').style.display = busy ? 'block' : 'none';
+  if (op) $('opBar').querySelector('i').style.width = ((op.progress || 0) * 100) + '%';
+  $('opStatus').textContent = op ? (op.message || '') :
+    'Zoom the window below 1.0x to extend outside the frame, then generate options.';
+  if (busy) startOpPoll();
+}
+
+// ---------- lightbox ----------
+let lbIndex = 0, lbMode = 'image';
+function openLightbox(mode, index) {
+  const op = opInfo(); if (!op) return;
+  lbMode = mode; lbIndex = index || 0;
+  renderLightbox();
+  $('lightbox').classList.add('open');
+}
+function renderLightbox() {
+  const op = opInfo(); if (!op) return;
+  const c = $('lbContent'); c.innerHTML = '';
+  if (lbMode === 'image') {
+    const img = document.createElement('img');
+    img.src = `/api/outpaint/file?seg=${sel}&i=${lbIndex}`;
+    c.appendChild(img);
+    $('lbLabel').textContent = `Option ${lbIndex + 1} / ${(op.options || []).length}` +
+                               (op.chosen === lbIndex ? ' — selected' : '');
+    $('lbPrev').style.display = $('lbNext').style.display = '';
+    $('lbUse').style.display = '';
+    $('lbUse').textContent = op.chosen === lbIndex ? '✓ Selected' : '✓ Use this option';
+  } else {
+    const v = document.createElement('video');
+    v.src = `/api/outpaint/file?seg=${sel}&video=1&i=${lbIndex}&ts=${Date.now()}`;
+    v.controls = true; v.autoplay = true; v.loop = true;
+    c.appendChild(v);
+    const n = (op.videos || []).length;
+    $('lbLabel').textContent = n > 1 ? `Render ${lbIndex + 1} / ${n}` : 'Outpainted segment video';
+    $('lbPrev').style.display = $('lbNext').style.display = n > 1 ? '' : 'none';
+    $('lbUse').style.display = 'none';
+  }
+}
+function closeLightbox() {
+  $('lightbox').classList.remove('open');
+  $('lbContent').innerHTML = '';  // stops video playback
+}
+$('lbClose').onclick = closeLightbox;
+$('lightbox').addEventListener('click', e => { if (e.target === $('lightbox')) closeLightbox(); });
+function lbCount() {
+  const op = opInfo() || {};
+  return lbMode === 'image' ? (op.options || []).length : (op.videos || []).length;
+}
+$('lbPrev').onclick = () => { const n = lbCount(); if (n) { lbIndex = (lbIndex + n - 1) % n; renderLightbox(); } };
+$('lbNext').onclick = () => { const n = lbCount(); if (n) { lbIndex = (lbIndex + 1) % n; renderLightbox(); } };
+$('lbUse').onclick = async () => {
+  await fetch('/api/outpaint/choose', POSTJSON({seg: sel, choice: lbIndex}));
+  const op = opInfo(); if (op) op.chosen = lbIndex;
+  renderLightbox(); renderOpCard();
+};
+window.addEventListener('keydown', e => {
+  if (!$('lightbox').classList.contains('open')) return;
+  if (e.code === 'Escape') closeLightbox();
+  if (e.code === 'ArrowLeft' && lbMode === 'image') $('lbPrev').onclick();
+  if (e.code === 'ArrowRight' && lbMode === 'image') $('lbNext').onclick();
+  e.stopImmediatePropagation();
+}, true);
+function startOpPoll() {
+  if (opPollTimer) return;
+  opPollTimer = setInterval(async () => {
+    try {
+      const st = await (await fetch('/api/status')).json();
+      if (st.segments && project) {
+        st.segments.forEach((s, i) => { if (segs()[i]) segs()[i].outpaint = s.outpaint; });
+      }
+    } catch (e) {}
+    const op = opInfo();
+    renderOpCard();
+    if (!op || (op.status !== 'generating' && op.status !== 'video_generating')) {
+      clearInterval(opPollTimer); opPollTimer = null; renderSide();
+    }
+  }, 2000);
+}
+$('opGenBtn').onclick = async () => {
+  const s = segs()[sel]; if (!s) return;
+  const t = (video.currentTime > s.start && video.currentTime < s.end)
+    ? video.currentTime : s.start + 0.05;
+  const stt = clampState(stateAt(t));
+  const r = await fetch('/api/outpaint', POSTJSON({
+    seg: sel, t, state: {c: stt.c, y: stt.y, z: stt.z}, prompt: $('opPrompt').value.trim(),
+    n: +$('opCount').value || 4}));
+  if (r.ok) { s.outpaint = {status: 'generating', progress: 0, message: 'Starting...'}; renderOpCard(); }
+};
+$('opUploadBtn').onclick = () => $('opFileInput').click();
+$('opFileInput').onchange = async () => {
+  const f = $('opFileInput').files[0]; $('opFileInput').value = '';
+  if (!f || !project) return;
+  const s = segs()[sel]; if (!s) return;
+  const t = (video.currentTime > s.start && video.currentTime < s.end) ? video.currentTime : s.start + 0.05;
+  const stt = clampState(stateAt(t));
+  const fd = new FormData();
+  fd.append('seg', sel);
+  fd.append('state', JSON.stringify({c: stt.c, y: stt.y, z: stt.z}));
+  fd.append('file', f);
+  const r = await fetch('/api/outpaint/upload', {method: 'POST', body: fd});
+  if (r.ok) {
+    const st = await (await fetch('/api/status')).json();
+    if (st.segments && st.segments[sel]) segs()[sel].outpaint = st.segments[sel].outpaint;
+    renderOpCard(); renderSide();
+  }
+};
+async function refreshProjects() {
+  try {
+    const d = await (await fetch('/api/project/list')).json();
+    $('projectSel').innerHTML = '<option value="">Load&hellip;</option>' +
+      (d.projects || []).map(n => `<option>${n}</option>`).join('');
+  } catch (e) {}
+}
+$('saveAsBtn').onclick = async () => {
+  if (!project) return;
+  const name = prompt('Snapshot name:');
+  if (!name) return;
+  await doSave();
+  await fetch('/api/project/save', POSTJSON({name}));
+  $('saveState').textContent = '✓ Snapshot "' + name + '" saved';
+  refreshProjects();
+};
+$('projectSel').onchange = async () => {
+  const name = $('projectSel').value; $('projectSel').value = '';
+  if (!name || !project) return;
+  pushUndo();
+  const d = await (await fetch('/api/project/load', POSTJSON({name}))).json();
+  if (d.segments) {
+    project.segments = d.segments; project.ranges = d.ranges || []; sel = 0;
+    renderSide(); renderTimeline(); renderRanges(); renderIo();
+    $('saveState').textContent = '✓ Loaded "' + name + '"';
+  }
+};
+$('opVideoBtn').onclick = async () => {
+  const r = await fetch('/api/outpaint/tovideo', POSTJSON({seg: sel}));
+  const op = opInfo();
+  if (r.ok && op) { op.status = 'video_generating'; op.progress = 0; op.message = 'Starting LTX...'; }
+  renderOpCard();
+};
+$('opCancelBtn').onclick = async () => {
+  await fetch('/api/outpaint/discard', POSTJSON({seg: sel}));
+  const s = segs()[sel]; if (s) delete s.outpaint;
+  renderOpCard(); renderSide();
+};
+$('opDiscardBtn').onclick = async () => {
+  pushUndo();
+  await fetch('/api/outpaint/discard', POSTJSON({seg: sel}));
+  const s = segs()[sel]; if (s) delete s.outpaint;
+  renderOpCard(); renderSide();
+};
+
+// ---------- click-to-track ----------
+let armTrack = false;
+$('trackClickBtn').onclick = () => {
+  armTrack = !armTrack;
+  stage.classList.toggle('tracking', armTrack);
+  $('trackClickBtn').style.borderColor = armTrack ? 'var(--accent)' : '';
+  $('trackClickBtn').style.color = armTrack ? 'var(--accent)' : '';
+};
+stage.addEventListener('pointerdown', e => {
+  if (!armTrack) return;
+  e.stopPropagation(); e.preventDefault();
+  $('trackClickBtn').onclick();  // disarm
+  const r = contentRect(), b = stage.getBoundingClientRect();
+  const x = (e.clientX - b.left - r.x) / r.w;
+  const y = (e.clientY - b.top - r.y) / r.h;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  const i = segAt(video.currentTime);
+  fetch('/api/track_click', POSTJSON({seg: i, x, y}));
+  segs()[i].track_job = {status: 'running', progress: 0, message: 'Starting...'};
+  renderKfPanel();
+  pollTrack(i);
+}, true);
+let trackPollTimer = null;
+function pollTrack(i) {
+  if (trackPollTimer) clearInterval(trackPollTimer);
+  trackPollTimer = setInterval(async () => {
+    try {
+      const st = await (await fetch('/api/status')).json();
+      if (st.segments && st.segments[i] && project) {
+        segs()[i].track_job = st.segments[i].track_job;
+        if (st.segments[i].track_job && st.segments[i].track_job.status !== 'running') {
+          if (st.segments[i].track_job.status === 'done') pushUndo();
+          segs()[i].keyframes = st.segments[i].keyframes;
+          clearInterval(trackPollTimer); trackPollTimer = null;
+          renderSide(); renderTimelineKfs();
+          return;
+        }
+      }
+      renderKfPanel();
+    } catch (e) {}
+  }, 1500);
+}
+
+// ---------- crop box drag ----------
+cropBox.addEventListener('pointerdown', e => {
+  dragging = true; cropBox.setPointerCapture(e.pointerId);
+  const st = stateAt(video.currentTime);
+  dragState = {c: st.c, y: st.y};
+  e.preventDefault();
+});
+cropBox.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const r = contentRect();
+  const st = stateAt(video.currentTime);
+  const {fw, fh} = cropFracs(st.z);
+  const box = stage.getBoundingClientRect();
+  let c = (e.clientX - box.left - r.x) / r.w;
+  let y = (e.clientY - box.top - r.y) / r.h;
+  dragState = {
+    c: Math.max(fw/2, Math.min(1 - fw/2, c)),
+    y: Math.max(fh/2, Math.min(1 - fh/2, y)),
+  };
+});
+cropBox.addEventListener('pointerup', e => {
+  if (!dragging) return;
+  dragging = false;
+  const d = dragState; dragState = null;
+  setCrop(video.currentTime, {c: d.c, y: d.y});
+});
+$('zoomSlider').addEventListener('input', () => {
+  const z = +$('zoomSlider').value;
+  $('zoomVal').textContent = z.toFixed(2) + 'x';
+  setCrop(video.currentTime, {z});
+});
+$('safeBtn').onclick = () => {
+  cropBox.classList.toggle('showsafe');
+  $('safeBtn').classList.toggle('on');
+};
+$('aspectSel').onchange = () => {
+  aspectKey = $('aspectSel').value;
+  const [aw, ah] = ASPECTS[aspectKey];
+  aspect = aw / ah;
+  $('cropTag').textContent = aspectKey;
+  const cv = $('preview');
+  cv.width = aw >= ah ? 360 : Math.round(480 * aw / ah);
+  cv.height = aw >= ah ? Math.round(360 * ah / aw) : 480;
+  cv.style.aspectRatio = `${aw}/${ah}`;
+  renderRanges();
+};
+$('timeline').addEventListener('pointerdown', e => {
+  const tl = $('timeline'), r = tl.getBoundingClientRect();
+  const seek = ev => {
+    const f = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+    video.currentTime = f * project.meta.duration;
+    selectSeg(segAt(video.currentTime), false);
+  };
+  seek(e);
+  const move = ev => seek(ev);
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+});
+
+// ---------- transport ----------
+$('playBtn').onclick = () => video.paused ? video.play() : video.pause();
+video.addEventListener('play', () => $('playBtn').innerHTML = '&#10074;&#10074;');
+video.addEventListener('pause', () => $('playBtn').innerHTML = '&#9654;');
+$('stepF').onclick = () => { video.pause(); video.currentTime += 1 / (project?.meta.fps || 24); };
+$('stepB').onclick = () => { video.pause(); video.currentTime -= 1 / (project?.meta.fps || 24); };
+$('prevSeg').onclick = () => selectSeg(segAt(video.currentTime) - (video.currentTime - segs()[segAt(video.currentTime)].start < 0.3 ? 1 : 0), true);
+$('nextSeg').onclick = () => selectSeg(segAt(video.currentTime) + 1, true);
+$('cutBtn').onclick = cutAtPlayhead;
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); $('playBtn').onclick(); }
+  if (e.code === 'ArrowRight') e.shiftKey ? $('nextSeg').onclick() : $('stepF').onclick();
+  if (e.code === 'ArrowLeft') e.shiftKey ? $('prevSeg').onclick() : $('stepB').onclick();
+  if (e.code === 'ArrowUp') { e.preventDefault(); $('prevSeg').onclick(); }
+  if (e.code === 'ArrowDown') { e.preventDefault(); $('nextSeg').onclick(); }
+  if (e.code === 'KeyI') $('setIn').onclick();
+  if (e.code === 'KeyO') $('setOut').onclick();
+  if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); doSave(); }
+  if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    e.shiftKey ? redo() : undo();
+  }
+  if (e.code === 'KeyY' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); redo(); }
+});
+$('saveBtn').onclick = () => doSave();
+
+// ---------- timeline zoom ----------
+let tlZoom = 1;
+function applyTlZoom() {
+  tlZoom = Math.max(1, Math.min(20, tlZoom));
+  $('tlInner').style.width = (tlZoom * 100) + '%';
+}
+function zoomAt(factor, clientX) {
+  const sc = $('tlScroll'), rect = sc.getBoundingClientRect();
+  const cursor = clientX === undefined ? rect.width / 2 : clientX - rect.left;
+  const timeFrac = (sc.scrollLeft + cursor) / $('tlInner').clientWidth;
+  tlZoom *= factor; applyTlZoom();
+  sc.scrollLeft = timeFrac * $('tlInner').clientWidth - cursor;
+}
+$('tlZoomIn').onclick = () => zoomAt(1.5);
+$('tlZoomOut').onclick = () => zoomAt(1 / 1.5);
+$('tlZoomFit').onclick = () => { tlZoom = 1; applyTlZoom(); };
+$('tlScroll').addEventListener('wheel', e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  zoomAt(e.deltaY < 0 ? 1.25 : 0.8, e.clientX);
+}, {passive: false});
+
+// ---------- RAF loop ----------
+function tick() {
+  if (project) {
+    renderOverlay(); renderPreview();
+    $('timeLabel').textContent = fmt(video.currentTime) + ' / ' + fmt(project.meta.duration);
+    $('playhead').style.left = (video.currentTime / project.meta.duration * 100) + '%';
+    if (!video.paused && tlZoom > 1) {  // keep playhead in view while playing
+      const sc = $('tlScroll');
+      const px = video.currentTime / project.meta.duration * $('tlInner').clientWidth;
+      if (px < sc.scrollLeft + 40 || px > sc.scrollLeft + sc.clientWidth - 40)
+        sc.scrollLeft = px - sc.clientWidth / 2;
+    }
+    const cur = segAt(video.currentTime);
+    if (!dragging && cur !== sel) {
+      sel = cur; renderSide(); renderTimeline();
+      const row = $('segList').children[sel];
+      if (row) row.scrollIntoView({block: 'nearest'});
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// ---------- load & export ----------
+$('openBtn').onclick = () => { $('loader').style.display = 'flex'; };
+$('browseBtn').onclick = async () => {
+  $('loadStatus').textContent = 'Pick a file in the dialog window...';
+  try {
+    const res = await fetch('/api/browse', {method: 'POST'});
+    const data = await res.json();
+    if (data.path) { $('pathInput').value = data.path; $('analyzeBtn').onclick(); }
+    else $('loadStatus').textContent = data.error || '';
+  } catch (e) { $('loadStatus').textContent = 'Browse failed: ' + e; }
+};
+$('analyzeBtn').onclick = async () => {
+  const path = $('pathInput').value.trim();
+  if (!path) return;
+  $('loadStatus').textContent = 'Opening...';
+  const res = await fetch('/api/open', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({path})});
+  if (!res.ok) { $('loadStatus').textContent = (await res.json()).error; return; }
+  pollLoad();
+};
+async function pollLoad() {
+  const res = await fetch('/api/status'); const st = await res.json();
+  $('loadStatus').textContent = st.message || st.phase;
+  $('loadBar').style.width = (st.progress * 100) + '%';
+  if (st.phase === 'error') { $('loadStatus').textContent = st.error; return; }
+  if (st.phase === 'ready') {
+    project = {meta: st.meta, segments: st.segments, ranges: st.ranges || []};
+    sel = 0;
+    video.src = '/video?ts=' + Date.now();
+    video.addEventListener('loadedmetadata', () => { renderTimeline(); renderSide(); renderRanges(); renderIo(); refreshProjects(); }, {once: true});
+    $('loader').style.display = 'none';
+    return;
+  }
+  setTimeout(pollLoad, 500);
+}
+$('exportBtn').onclick = async () => {
+  $('exportBtn').disabled = true;
+  $('exportBar').style.display = 'block';
+  $('resultVideo').style.display = 'none';
+  $('resultList').innerHTML = '';
+  await fetch('/api/export', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({segments: segs(), ranges: ranges(), aspect: aspectKey,
+                          captions: $('captionsChk').checked, crf: 20})});
+  pollExport();
+};
+async function pollExport() {
+  const res = await fetch('/api/status'); const st = await res.json();
+  $('exportStatus').textContent = st.message || '';
+  $('exportBar').querySelector('i').style.width = (st.progress * 100) + '%';
+  if (st.phase === 'error') { $('exportStatus').textContent = st.error; $('exportBtn').disabled = false; return; }
+  if (st.phase === 'done') {
+    $('exportBtn').disabled = false;
+    $('exportStatus').textContent = 'Saved next to the source video.';
+    const paths = st.export_paths || [];
+    const list = $('resultList'); list.innerHTML = '';
+    paths.forEach((p, i) => {
+      const name = p.split(/[\\/]/).pop();
+      const row = document.createElement('div');
+      row.className = 'resrow';
+      row.innerHTML = `<button data-i="${i}">&#9654;</button>
+        <a href="/api/result?i=${i}&dl=1">${name}</a>`;
+      row.querySelector('button').onclick = () => {
+        const rv = $('resultVideo');
+        rv.src = '/api/result?i=' + i + '&ts=' + Date.now();
+        rv.style.display = 'block'; rv.play();
+      };
+      list.appendChild(row);
+    });
+    if (paths.length === 1) {
+      const rv = $('resultVideo');
+      rv.src = '/api/result?i=0&ts=' + Date.now(); rv.style.display = 'block';
+    }
+    return;
+  }
+  setTimeout(pollExport, 700);
+}
+
+// try to resume an existing session on refresh
+(async () => {
+  const st = await (await fetch('/api/status')).json();
+  if (st.version) { $('ver').textContent = 'v' + st.version; $('verLoader').textContent = 'v' + st.version; }
+  if (st.phase === 'ready' || st.phase === 'done') {
+    project = {meta: st.meta, segments: st.segments, ranges: st.ranges || []};
+    video.src = '/video?ts=' + Date.now();
+    video.addEventListener('loadedmetadata', () => { renderTimeline(); renderSide(); renderRanges(); renderIo(); refreshProjects(); }, {once: true});
+    $('loader').style.display = 'none';
+  } else if (st.phase === 'detecting' || st.phase === 'analyzing') {
+    pollLoad();
+  }
+})();
+</script>
+</body>
+</html>

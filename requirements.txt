@@ -1,0 +1,6 @@
+scenedetect
+opencv-python
+numpy
+flask
+onnxruntime
+faster-whisper

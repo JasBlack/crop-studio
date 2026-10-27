@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CROP STUDIO</title>
+<meta name="description" content="Turn horizontal video into vertical shorts, right in your browser. Auto-detects cuts and frames every scene on faces. Your video never leaves your computer.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* jas.black tool-family palette (paint.jas.black / snap.jas.black) */
+    --case: #121314; --bg: #121314; --panel: #18191b; --panel2: #222326; --line: #26272a;
+    --key: #222326; --keyon: #1b1c1e; --keyline: #303135; --keyshadow: #070708;
+    --press: rgba(0,0,0,.5); --well: #141517; --ledoff: #34353a;
+    --text: #e4e4e1; --dim: #6f7074; --muted: #8c8c88;
+    --accent: #39ff88; --accent2: #b36bff; --blue: #b36bff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+         height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  header { display: flex; align-items: baseline; gap: 14px; padding: 14px 20px 10px; }
+  header h1 { font-size: 19px; }
+  header .hint { color: var(--dim); font-size: 13px; }
+  header .spacer { flex: 1; }
+  header button, header select, header a.key { background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  header button.on { border-color: var(--accent); color: var(--accent); }
+  .layout { flex: 1; display: flex; min-height: 0; gap: 12px; padding: 0 12px 12px; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; gap: 10px; }
+
+  .stage { position: relative; flex: 1; background: #000; border-radius: 12px; overflow: hidden; min-height: 0; }
+  .stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .shade { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.55); pointer-events: none; }
+  #cropBox { position: absolute; border: 2px solid var(--accent); border-radius: 2px; cursor: grab;
+             box-shadow: 0 0 0 1px rgba(0,0,0,.6); touch-action: none; }
+  #cropBox:active { cursor: grabbing; }
+  #cropBox .tag { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.65); color: #b8f5c9;
+                  font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+  #cropBox .adjust { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+                     background: rgba(0,0,0,.75); border: 1px solid #444; border-radius: 8px;
+                     padding: 4px 12px; font-size: 12px; white-space: nowrap; pointer-events: none; }
+  .safe { position: absolute; pointer-events: none; display: none; border: 1px dashed rgba(255,80,80,.75); }
+  #cropBox.showsafe .safe { display: block; }
+  .safe.t { left: 0; right: 0; top: 0; height: 10%; border-width: 0 0 1px 0; background: rgba(255,80,80,.12); }
+  .safe.b { left: 0; right: 0; bottom: 0; height: 28%; border-width: 1px 0 0 0; background: rgba(255,80,80,.12); }
+  .safe.r { right: 0; top: 10%; bottom: 28%; width: 14%; border-width: 0 0 0 1px; background: rgba(255,80,80,.08); }
+  .transport { display: flex; align-items: center; gap: 8px; }
+  .transport button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                      border-radius: 8px; width: 34px; height: 30px; cursor: pointer; font-size: 13px; }
+  .transport button.play { background: var(--blue); border-color: var(--blue); width: 44px; }
+  .transport .time { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  .tl-wrap { background: var(--panel); border-radius: 12px; padding: 8px 10px; }
+  #tlScroll { overflow-x: auto; overflow-y: hidden; }
+  #tlInner { min-width: 100%; }
+  .tl-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--dim); }
+  .tl-bar button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                   border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  #timeline { position: relative; height: 64px; border-radius: 6px; overflow: hidden; cursor: pointer; display: flex; }
+  #timeline .seg { position: relative; height: 100%; background-size: auto 100%; background-repeat: repeat-x;
+                   border-right: 1px solid #000; flex-shrink: 0; }
+  #timeline .seg.sel { outline: 2px solid #fff; outline-offset: -2px; z-index: 2; }
+  #timeline .seg .dotline { position: absolute; left: 0; right: 0; top: 0; height: 4px; }
+  #timeline .kf { position: absolute; top: 6px; width: 8px; height: 8px; transform: translateX(-50%) rotate(45deg);
+                  background: #fff; border: 1px solid #000; z-index: 3; }
+  #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #4ad3ff; z-index: 4; pointer-events: none; }
+  #rangeStrip { position: relative; height: 12px; margin-bottom: 4px; background: var(--panel2); border-radius: 4px; }
+  #rangeStrip .rbar { position: absolute; top: 2px; bottom: 2px; border-radius: 3px; cursor: pointer; opacity: .85; }
+  #rangeStrip .rbar:hover { opacity: 1; }
+  #rangeStrip .rmark { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; opacity: .7; }
+
+  .shorts .iorow { display: flex; gap: 6px; margin-top: 10px; align-items: center; }
+  .shorts .iorow button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                          border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+  .shorts .iorow .io { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 86px; text-align: center; }
+  .shorts .iorow #addRange { background: var(--blue); border-color: var(--blue); font-weight: 600; }
+  #rangeList { margin-top: 8px; max-height: 150px; overflow-y: auto; }
+  .rrow { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 13px; }
+  .rrow:hover { background: var(--panel2); }
+  .rrow .chip { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .rrow input { background: none; border: none; border-bottom: 1px dashed transparent; color: var(--text);
+                font-size: 13px; width: 90px; }
+  .rrow input:focus { outline: none; border-bottom-color: var(--dim); }
+  .rrow .rtimes { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; flex: 1; }
+  .rrow .icon { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 13px; }
+  .rrow .icon:hover { color: #fff; }
+  #resultList { margin-top: 8px; font-size: 13px; align-self: stretch; }
+  #resultList .resrow { display: flex; gap: 8px; align-items: center; padding: 3px 0; }
+  #resultList a { color: var(--accent); text-decoration: none; overflow-wrap: anywhere; }
+  #resultList button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                       border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+
+  .side { width: 400px; display: flex; flex-direction: column; gap: 12px; min-height: 0;
+          overflow-y: auto; padding-right: 2px; }
+  .side > .card { flex-shrink: 0; }
+  .card { background: var(--panel); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; min-height: 0; }
+  .card h2 { font-size: 16px; display: flex; align-items: center; }
+  .card h2 .count { margin-left: auto; background: var(--panel2); border-radius: 6px; padding: 1px 8px;
+                    font-size: 12px; color: var(--dim); }
+  #segList { overflow-y: auto; margin-top: 10px; flex: 1; min-height: 120px; }
+  .segrow { display: flex; align-items: center; gap: 9px; padding: 7px 6px; border-radius: 8px; cursor: pointer; }
+  .segrow:hover { background: var(--panel2); }
+  .segrow.sel { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
+  .segrow.sel .times b { color: var(--accent); }
+  .segrow .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .segrow .times { font-variant-numeric: tabular-nums; font-size: 13px; white-space: nowrap; }
+  .segrow .times b { font-weight: 600; } .segrow .times span { color: var(--dim); font-size: 12px; }
+  .segrow .gauge { flex: 1; height: 4px; background: var(--line); border-radius: 2px; position: relative; }
+  .segrow .gauge i { position: absolute; top: 0; height: 100%; border-radius: 2px; }
+  .segrow .icon { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 14px; padding: 2px 4px; }
+  .segrow .icon:hover { color: #fff; }
+  .kfpanel { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; font-size: 12px; }
+  .kfpanel .kfrow { display: flex; gap: 8px; align-items: center; padding: 2px 4px; color: var(--dim);
+                    font-variant-numeric: tabular-nums; }
+  .kfpanel .kfrow button { background: none; border: none; color: var(--dim); cursor: pointer; }
+  .kfpanel .actions { display: flex; gap: 8px; margin-top: 6px; }
+  .kfpanel .actions button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+                             border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
+  .previewCard { align-items: center; }
+  .previewCard h2 { align-self: stretch; }
+  #preview { margin-top: 10px; height: 220px; aspect-ratio: 9/16; background: #000; border-radius: 10px; }
+  #exportBtn { margin-top: 12px; width: 100%; background: var(--accent); color: #052e12; font-weight: 600;
+               border: none; border-radius: 10px; padding: 10px; cursor: pointer; font-size: 14px; }
+  #exportBtn:disabled { opacity: .5; cursor: default; }
+  #exportStatus { margin-top: 8px; font-size: 12px; color: var(--dim); align-self: stretch; text-align: center; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; align-self: stretch; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0%; transition: width .3s; }
+  #resultVideo { margin-top: 10px; height: 240px; aspect-ratio: 9/16; background: #000; border-radius: 10px; display: none; }
+
+  /* desktop-app upsell card */
+  .desk ul { list-style: none; margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .desk li { display: flex; gap: 8px; align-items: baseline; color: var(--muted); }
+  .desk li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; transform: translateY(-1px);
+                     background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+  .desk p { color: var(--dim); margin-top: 10px; }
+  .desk a.get { margin-top: 12px; display: block; text-align: center; text-decoration: none; }
+
+  #loader { position: fixed; inset: 0; background: rgba(8,8,10,.92); display: flex; align-items: center;
+            justify-content: center; z-index: 50; padding: 16px; }
+  #loader .box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 26px;
+                 width: 560px; max-width: 100%; }
+  #loader h2 { margin-bottom: 6px; }
+  #loader p { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
+  #drop { border: 1.5px dashed var(--keyline); border-radius: 12px; padding: 26px 16px; text-align: center;
+          color: var(--muted); cursor: pointer; transition: border-color .12s, background .12s; }
+  #drop.over, #drop:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  #drop b { color: var(--accent); font-weight: 600; }
+  #loader .row { display: flex; gap: 10px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+  #loader button { background: var(--blue); border: none; color: #fff; border-radius: 8px; padding: 9px 18px;
+                   cursor: pointer; font-weight: 600; }
+  #loader .fine { color: var(--dim); margin-top: 14px; }
+  #loader .fine a { color: var(--accent2); }
+  #loadStatus { margin-top: 12px; font-size: 13px; color: var(--dim); min-height: 18px; }
+  #loadStatus.err { color: #ff6b6b; }
+
+  /* ================= jas.black family theme (override layer) =================
+     Console-hardware language shared with paint.jas.black and snap.jas.black:
+     IBM Plex Mono micro-type, flat pressable keys with a hard bottom shadow and
+     LED dots, inset wells, green/violet accent pair, Archivo spaced-caps brand. */
+
+  body { font: 11px/1.45 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+         letter-spacing: .02em; background: var(--case); }
+
+  /* --- keys: every button becomes a flat pressable key --- */
+  button { font: 500 10px 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .06em; }
+  header button, header a.key, .transport button, .tl-bar button,
+  .shorts .iorow button, .kfpanel .actions button, #resultList button, .desk a.get,
+  #loader button {
+    background: var(--key); border: 1px solid var(--keyline); color: var(--text);
+    border-radius: 9px; box-shadow: 0 2px 0 var(--keyshadow);
+    transition: border-color .12s, transform .05s, box-shadow .05s;
+    text-transform: lowercase; font: 500 10px 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .06em;
+  }
+  header button:hover:not(:disabled), header a.key:hover, .transport button:hover:not(:disabled),
+  .tl-bar button:hover:not(:disabled), .desk a.get:hover,
+  .shorts .iorow button:hover:not(:disabled), .kfpanel .actions button:hover:not(:disabled),
+  #resultList button:hover, #loader button:hover {
+    border-color: var(--muted);
+  }
+  header button:active:not(:disabled), .transport button:active:not(:disabled),
+  .tl-bar button:active:not(:disabled), .desk a.get:active,
+  .shorts .iorow button:active:not(:disabled), .kfpanel .actions button:active:not(:disabled),
+  #loader button:active {
+    transform: translateY(1px); background: var(--keyon);
+    box-shadow: 0 1px 0 var(--keyshadow), inset 0 1px 3px var(--press);
+  }
+  header button:disabled { opacity: .4; }
+  header button.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--keyline)); }
+  header a.key { text-decoration: none; display: inline-flex; align-items: center; }
+
+  /* action keys: violet = do-something, solid green = GO (family convention) */
+  .transport button.play, .shorts .iorow #addRange, #loader button, .desk a.get, header a.key {
+    background: color-mix(in srgb, var(--accent2) 22%, var(--key));
+    border-color: color-mix(in srgb, var(--accent2) 55%, var(--keyline));
+    color: color-mix(in srgb, var(--accent2) 70%, var(--text));
+    font-weight: 600;
+  }
+  .desk a.get { padding: 9px 12px; }
+  #exportBtn {
+    background: var(--accent) !important; border: 1px solid color-mix(in srgb, var(--accent) 80%, #000) !important;
+    color: #0b0b0c !important; font: 600 11px 'IBM Plex Mono', monospace; letter-spacing: .08em;
+    text-transform: lowercase; box-shadow: 0 2px 0 color-mix(in srgb, var(--accent) 55%, #000);
+    border-radius: 9px;
+  }
+  #exportBtn:active:not(:disabled) { transform: translateY(1px); }
+
+  /* --- header: brand + status row --- */
+  header { align-items: center; padding: 12px 18px 8px; gap: 12px; }
+  header h1 { font: 800 13px 'Archivo', sans-serif; letter-spacing: .32em; color: var(--text);
+              display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+  header h1::before { content: ''; width: 7px; height: 7px; border-radius: 50%;
+                      background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  header .hint { font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: lowercase; }
+  #saveState { font-size: 9px !important; letter-spacing: .1em; }
+
+  /* --- selects: family dropdown wells --- */
+  select, header select {
+    appearance: none; -webkit-appearance: none; height: 28px; border-radius: 8px;
+    border: 1px solid var(--keyline);
+    background: var(--well) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%238c8c88'/%3E%3C/svg%3E") no-repeat right 9px center;
+    padding: 0 24px 0 10px; font: 500 9.5px 'IBM Plex Mono', monospace; color: var(--text);
+    cursor: pointer; text-transform: lowercase;
+  }
+  select:focus { outline: none; border-color: var(--muted); }
+  select option { background: var(--panel); color: var(--text); }
+
+  /* --- inputs: wells --- */
+  .rrow input { font: 500 10px 'IBM Plex Mono', monospace !important; letter-spacing: .04em; color: var(--text); }
+  input[type=range] { accent-color: var(--accent2); }
+
+  /* --- panels --- */
+  .card, .tl-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  .card h2 { font: 600 10px 'IBM Plex Mono', monospace; letter-spacing: .22em; text-transform: uppercase;
+             color: var(--muted); }
+  .card h2 .count { background: var(--well); border: 1px solid var(--line); border-radius: 6px;
+                    font-size: 9px; color: var(--dim); box-shadow: inset 0 1px 2px var(--press); }
+  .kfpanel { font-size: 10px; }
+  .kfpanel b { color: var(--text); font-weight: 600; letter-spacing: .08em; }
+
+  /* --- stage + crop window --- */
+  .stage { background: #0b0b0c; border: 1px solid var(--line); border-radius: 12px; }
+  #cropBox { border: 1.5px solid var(--accent); box-shadow: 0 0 0 1px rgba(0,0,0,.65), 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent); }
+  #cropBox .tag { background: rgba(11,11,12,.8); color: var(--accent); font: 600 9px 'IBM Plex Mono', monospace;
+                  letter-spacing: .14em; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  #cropBox .adjust { background: rgba(11,11,12,.85); border: 1px solid var(--keyline); border-radius: 8px;
+                     font: 500 9px 'IBM Plex Mono', monospace; letter-spacing: .14em; color: var(--dim);
+                     text-transform: lowercase; }
+
+  /* --- transport --- */
+  .transport { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+  .transport button { width: 36px; height: 32px; }
+  .transport button.play { width: 46px; }
+  .transport .time { font: 600 10px 'IBM Plex Mono', monospace; letter-spacing: .1em; color: var(--accent); }
+
+  /* --- timeline: inset well + silver knob playhead (snap.jas.black) --- */
+  #timeline { border-radius: 9px; background: var(--well);
+              box-shadow: inset 0 2px 5px rgba(0,0,0,.6), inset 0 -1px 0 rgba(255,255,255,.03); }
+  #timeline .seg { border-right: 1px solid rgba(0,0,0,.8); }
+  #timeline .seg.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+  #timeline .kf { background: var(--text); border-color: #000; box-shadow: 0 0 5px rgba(255,255,255,.4); }
+  #playhead { background: linear-gradient(180deg, #f4f5f7, #c9ccd4); width: 2px;
+              box-shadow: 0 0 6px rgba(255,255,255,.35); }
+  #playhead::after { content: ''; position: absolute; top: -5px; left: 50%; width: 11px; height: 11px;
+                     border-radius: 50%; transform: translateX(-50%);
+                     background: linear-gradient(145deg, #f4f5f7, #c9ccd4);
+                     box-shadow: 1px 2px 4px rgba(0,0,0,.6); }
+  #rangeStrip { background: var(--well); box-shadow: inset 0 1px 3px rgba(0,0,0,.55); border-radius: 6px; }
+  #rangeStrip .rbar { box-shadow: 0 0 8px color-mix(in srgb, var(--accent2) 30%, transparent); }
+  .tl-bar { font-size: 9px; letter-spacing: .12em; text-transform: lowercase; }
+
+  /* --- rows + gauges --- */
+  .segrow, .rrow { border-radius: 8px; font-size: 10.5px; }
+  .segrow:hover, .rrow:hover { background: var(--keyon); }
+  .segrow.sel { background: var(--keyon); box-shadow: inset 2px 0 0 var(--accent), inset 0 1px 2px var(--press); }
+  .segrow .gauge { background: var(--well); box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+  .segrow .dot { box-shadow: 0 0 5px currentColor; }
+
+  /* --- preview + bars --- */
+  #preview, #resultVideo { border: 1px solid var(--keyline); background: var(--well);
+                           box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
+  .bar { background: var(--well); box-shadow: inset 0 1px 3px rgba(0,0,0,.6); border-radius: 4px; height: 7px; }
+  .bar i { background: linear-gradient(90deg, color-mix(in srgb, var(--accent2) 80%, #000), var(--accent2));
+           box-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 50%, transparent); border-radius: 4px; }
+  #exportBar i { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, #000), var(--accent));
+           box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent); }
+  #resultList a { color: var(--accent); }
+  #exportStatus, #loadStatus { font-size: 9.5px; letter-spacing: .08em; }
+
+  /* --- loader: landing console --- */
+  #loader { background: rgba(11,11,12,.94); }
+  #loader .box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+                 box-shadow: 0 20px 60px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.03); }
+  #loader h2 { font: 800 15px 'Archivo', sans-serif; letter-spacing: .32em; color: var(--text);
+               display: flex; align-items: center; gap: 10px; }
+  #loader h2::before { content: ''; width: 8px; height: 8px; border-radius: 50%;
+                       background: var(--accent); box-shadow: 0 0 9px var(--accent); }
+  #loader p, #loader .fine { font-size: 10px; letter-spacing: .06em; line-height: 1.7; }
+  #loader button { padding: 10px 20px; border-radius: 9px; }
+
+  /* long helper texts truncate instead of wrapping into columns */
+  header .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  .tl-bar > span:not([style]) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+
+  /* keys never wrap their labels */
+  header button, header a.key, .transport button, .tl-bar button,
+  .shorts .iorow button, .kfpanel .actions button, #loader button { white-space: nowrap; }
+  header { flex-wrap: nowrap; }
+  header button, header a.key { padding: 5px 10px; }
+
+  /* --- scrollbars --- */
+  .side, #segList, #rangeList { scrollbar-width: thin; scrollbar-color: var(--keyline) transparent; }
+  .side::-webkit-scrollbar, #segList::-webkit-scrollbar, #rangeList::-webkit-scrollbar { width: 4px; }
+  .side::-webkit-scrollbar-thumb, #segList::-webkit-scrollbar-thumb { background: var(--keyline); }
+  #tlScroll::-webkit-scrollbar { height: 5px; }
+  #tlScroll::-webkit-scrollbar-thumb { background: var(--keyline); }
+
+  /* --- narrow screens: stack the editor, let the page scroll --- */
+  @media (max-width: 900px) {
+    body { height: auto; min-height: 100vh; overflow: auto; }
+    header { flex-wrap: wrap; padding: 12px 16px 8px; }
+    header .hint { display: none; }
+    .layout { flex-direction: column; padding: 0 16px 16px; }
+    .stage { flex: none; height: 56vw; min-height: 200px; }
+    .transport { flex-wrap: wrap; }
+    .side { width: auto; overflow: visible; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>CROP STUDIO</h1>
+  <span class="hint">position the crop &middot; segments come from detected cuts &middot; runs in your browser</span>
+  <span class="spacer"></span>
+  <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
+  <button id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>
+  <span id="saveState" style="color:var(--dim);font-size:12px"></span>
+  <button id="saveBtn" title="Download the project file (Ctrl+S) — edits also auto-save in this browser">Save project</button>
+  <button id="loadBtn" title="Load a .crop.json project file (also works with files from the desktop app)">Load project</button>
+  <input type="file" id="projectFile" accept=".json,application/json" style="display:none">
+  <select id="aspectSel" title="Output aspect">
+    <option value="9:16">9:16</option><option value="1:1">1:1</option><option value="4:5">4:5</option>
+  </select>
+  <button id="safeBtn" title="Show platform UI safe zones">Safe zones</button>
+  <button id="reanalyzeBtn" title="Throw away edits and detect cuts + framing again">Re-analyze</button>
+  <button id="openBtn">Open video</button>
+  <a class="key repo-link" target="_blank" rel="noopener" title="The free desktop app adds AI outpainting, subject tracking, captions and AI shorts">Desktop app &#8599;</a>
+</header>
+
+<div class="layout">
+  <div class="main">
+    <div class="stage" id="stage">
+      <video id="video" playsinline></video>
+      <div class="shade" id="shadeL"></div>
+      <div class="shade" id="shadeR"></div>
+      <div class="shade" id="shadeT"></div>
+      <div class="shade" id="shadeB"></div>
+      <div id="cropBox"><span class="tag" id="cropTag">9:16</span><span class="adjust">&#10021; Adjust</span>
+        <div class="safe t"></div><div class="safe b"></div><div class="safe r"></div>
+      </div>
+    </div>
+    <div class="transport">
+      <button id="prevSeg">&#9664;&#9664;</button>
+      <button id="playBtn" class="play">&#9654;</button>
+      <button id="nextSeg">&#9654;&#9654;</button>
+      <button id="stepB">&#10096;</button>
+      <button id="stepF">&#10097;</button>
+      <span style="margin-left:14px;color:var(--dim);font-size:12px">Zoom</span>
+      <input type="range" id="zoomSlider" min="1" max="2.5" step="0.05" value="1" style="width:150px">
+      <span id="zoomVal" style="color:var(--dim);font-size:12px;min-width:34px">1.00x</span>
+      <span class="time" id="timeLabel">0:00.0 / 0:00.0</span>
+    </div>
+    <div class="tl-wrap">
+      <div class="tl-bar">
+        <button id="cutBtn">&#9986; Cut at playhead</button>
+        <span>click to seek &middot; Ctrl+wheel or buttons to zoom timeline</span>
+        <span style="margin-left:auto"></span>
+        <button id="tlZoomOut" title="Zoom out">&minus;</button>
+        <button id="tlZoomIn" title="Zoom in">+</button>
+        <button id="tlZoomFit" title="Fit whole timeline">Fit</button>
+      </div>
+      <div id="tlScroll"><div id="tlInner">
+        <div id="rangeStrip"></div>
+        <div id="timeline"><div id="playhead"></div></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card" style="flex:1 0 auto; min-height:230px; max-height:34vh">
+      <h2>Crop Positions <span class="count" id="segCount">0</span></h2>
+      <div id="segList"></div>
+      <div class="kfpanel" id="kfPanel"></div>
+    </div>
+    <div class="card previewCard">
+      <h2 id="previewTitle">Preview (9:16)</h2>
+      <canvas id="preview" width="270" height="480"></canvas>
+      <button id="exportBtn">Export 9:16 video</button>
+      <div class="bar" id="exportBar" style="display:none"><i></i></div>
+      <div id="exportStatus"></div>
+      <div id="resultList"></div>
+      <video id="resultVideo" controls playsinline></video>
+    </div>
+    <div class="card shorts">
+      <h2>Shorts <span class="count" id="rangeCount">0</span></h2>
+      <div class="iorow">
+        <button id="setIn" title="Mark start at playhead (I)">&#10647; In</button>
+        <span class="io" id="ioLabel">&ndash; / &ndash;</span>
+        <button id="setOut" title="Mark end at playhead (O)">Out &#10648;</button>
+        <button id="addRange">+ Add</button>
+      </div>
+      <div id="rangeList"></div>
+    </div>
+    <div class="card desk">
+      <h2>Desktop app</h2>
+      <ul>
+        <li>AI outpainting beyond the frame (Flux stills + LTX video)</li>
+        <li>Click-to-track any subject (SAM 3)</li>
+        <li>Burned-in auto-captions (Whisper)</li>
+        <li>AI-suggested shorts with hook intros</li>
+        <li>4K, HEVC and 10-bit sources</li>
+      </ul>
+      <p>Free and open source. Runs on your own computer with Python. Project files work in both.</p>
+      <a class="get repo-link" target="_blank" rel="noopener">Get it on GitHub &#8599;</a>
+    </div>
+  </div>
+</div>
+
+<div id="loader">
+  <div class="box">
+    <h2>CROP STUDIO</h2>
+    <p>Turn a horizontal video into vertical shorts. Cuts are detected automatically and each
+       segment gets an auto-framed 9:16 crop (faces prioritized). Adjust, then export.</p>
+    <div id="drop"><b>Choose a video</b> or drop it here</div>
+    <input type="file" id="videoFile" accept="video/*,.mkv,.mov" style="display:none">
+    <div id="loadStatus"></div>
+    <div class="bar"><i id="loadBar"></i></div>
+    <div class="fine">Your video never leaves your computer: everything runs in this browser.
+      Works best in Chrome or Edge. For 4K/HEVC footage, AI outpainting, tracking and captions,
+      get the <a class="repo-link" target="_blank" rel="noopener">desktop app</a>.</div>
+  </div>
+</div>
+
+<script type="module">
+import * as MB from './vendor/mediabunny.min.mjs';
+
+// Where the "Desktop app" links point. Change this to your GitHub repo.
+const REPO_URL = 'https://github.com/YOUR-USERNAME/crop-studio';
+document.querySelectorAll('.repo-link').forEach(a => a.href = REPO_URL);
+
+const $ = id => document.getElementById(id);
+const COLORS = ['#22c55e','#3b82f6','#a855f7','#f97316','#ec4899','#14b8a6','#eab308','#ef4444'];
+const ASPECTS = {'9:16': [1080, 1920], '1:1': [1080, 1080], '4:5': [1080, 1350]};
+const video = $('video'), stage = $('stage'), cropBox = $('cropBox');
+let project = null;      // {meta, segments, ranges}
+let src = null;          // {file, input, vtrack, atrack, url}
+let sel = 0;
+let aspectKey = '9:16';
+let aspect = 1080/1920;  // target aspect (w/h)
+let dragging = false, dragState = null;   // {c, y} while dragging
+let saveTimer = null;
+
+const fmt = t => { t = Math.max(0, t); const m = Math.floor(t/60), s = t - m*60;
+  return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1); };
+const fmtS = t => { const m = Math.floor(t/60), s = Math.round(t - m*60);
+  return m + ':' + (s < 10 ? '0' : '') + s; };
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+
+// ---------- geometry ----------
+function contentRect() {  // displayed video content area inside stage (object-fit: contain)
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  const vw = video.videoWidth || 16, vh = video.videoHeight || 9;
+  const scale = Math.min(sw / vw, sh / vh);
+  const w = vw * scale, h = vh * scale;
+  return { x: (sw - w) / 2, y: (sh - h) / 2, w, h };
+}
+function cropFracs(z, asp = aspect) {  // crop window size as fraction of source at zoom z
+  const vw = project ? project.meta.width : 16, vh = project ? project.meta.height : 9;
+  z = Math.max(1, z || 1);
+  let wh = vh / z;                 // window height in source px
+  let ww = wh * asp;
+  if (ww > vw / z) { ww = vw / z; wh = ww / asp; }
+  return { fw: ww / vw, fh: wh / vh };
+}
+
+// ---------- segments / keyframes ----------
+const segs = () => project ? project.segments : [];
+function segAt(t, list = segs()) {
+  for (let i = list.length - 1; i >= 0; i--) if (t >= list[i].start - 1e-6) return i;
+  return 0;
+}
+const kfY = k => k.y === undefined ? 0.5 : k.y;
+const kfZ = k => k.z === undefined ? 1.0 : Math.max(1, k.z);  // zoom-out (<1) is desktop-only outpaint territory
+function keyframeState(s, t) {   // {c, y, z} interpolated inside segment s
+  if (!s || !s.keyframes.length) return {c: 0.5, y: 0.5, z: 1};
+  const kfs = s.keyframes;
+  const at = k => ({c: k.c, y: kfY(k), z: kfZ(k)});
+  if (t <= kfs[0].t) return at(kfs[0]);
+  if (t >= kfs[kfs.length-1].t) return at(kfs[kfs.length-1]);
+  for (let i = 0; i < kfs.length - 1; i++) {
+    const a = kfs[i], b = kfs[i+1];
+    if (t >= a.t && t <= b.t) {
+      const f = (t - a.t) / (b.t - a.t || 1);
+      return {c: a.c + f*(b.c - a.c), y: kfY(a) + f*(kfY(b) - kfY(a)), z: kfZ(a) + f*(kfZ(b) - kfZ(a))};
+    }
+  }
+  return at(kfs[0]);
+}
+function stateAt(t) {
+  const st = keyframeState(segs()[segAt(t)], t);
+  if (dragging && dragState) { st.c = dragState.c; st.y = dragState.y; }
+  return st;
+}
+function clampState(st, asp = aspect) {
+  const {fw, fh} = cropFracs(st.z, asp);
+  st.c = fw >= 1 ? 0.5 : Math.max(fw/2, Math.min(1 - fw/2, st.c));
+  st.y = fh >= 1 ? 0.5 : Math.max(fh/2, Math.min(1 - fh/2, st.y));
+  return st;
+}
+function setCrop(t, patch) {  // patch: any of {c, y, z} — applied to keyframe at/near t
+  const s = segs()[segAt(t)];
+  if (!s) return;
+  pushUndo('crop');
+  const cur = clampState({...stateAt(t), ...patch});
+  const apply = k => { k.c = +cur.c.toFixed(4); k.y = +cur.y.toFixed(4); k.z = +cur.z.toFixed(3); };
+  if (s.keyframes.length === 1) apply(s.keyframes[0]);
+  else {
+    const near = s.keyframes.find(k => Math.abs(k.t - t) < 0.15);
+    if (near) apply(near);
+    else {
+      const k = {t: +t.toFixed(3)}; apply(k);
+      s.keyframes.push(k); s.keyframes.sort((a,b)=>a.t-b.t);
+    }
+  }
+  scheduleSave(); renderSide(); renderTimelineKfs();
+}
+// ---------- undo / redo ----------
+const undoStack = [], redoStack = [];
+let lastPush = {tag: null, at: 0};
+function snapState() {
+  return structuredClone({segments: project.segments, ranges: project.ranges || [], sel});
+}
+function pushUndo(tag) {
+  if (!project) return;
+  const now = Date.now();
+  if (tag && tag === lastPush.tag && now - lastPush.at < 600) { lastPush.at = now; return; }
+  lastPush = {tag, at: now};
+  undoStack.push(snapState());
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoButtons();
+}
+function restoreState(st) {
+  project.segments = st.segments;
+  project.ranges = st.ranges;
+  sel = Math.min(st.sel, st.segments.length - 1);
+  scheduleSave();
+  renderSide(); renderTimeline(); renderRanges(); renderIo();
+}
+function undo() {
+  if (!undoStack.length || !project) return;
+  redoStack.push(snapState());
+  restoreState(undoStack.pop());
+  updateUndoButtons();
+}
+function redo() {
+  if (!redoStack.length || !project) return;
+  undoStack.push(snapState());
+  restoreState(redoStack.pop());
+  updateUndoButtons();
+}
+function updateUndoButtons() {
+  $('undoBtn').disabled = !undoStack.length;
+  $('redoBtn').disabled = !redoStack.length;
+}
+$('undoBtn').onclick = undo;
+$('redoBtn').onclick = redo;
+
+// ---------- persistence: auto-save in this browser, project files on demand ----------
+// The project file uses the desktop app's sidecar format ({duration, segments, ranges}),
+// so a <video>.crop.json saved here opens in the desktop app and vice versa.
+const storeKey = () => src ? `cropstudio:${src.file.name}:${src.file.size}` : null;
+function projectData() {
+  return {duration: project.meta.duration, segments: segs(), ranges: ranges()};
+}
+function doSave() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (!project || !src) return;
+  try {
+    localStorage.setItem(storeKey(), JSON.stringify(projectData()));
+    $('saveState').textContent = '✓ Saved in browser ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    $('saveState').textContent = 'Not auto-saved — use Save project';
+  }
+}
+function scheduleSave() {
+  $('saveState').textContent = 'Unsaved changes…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doSave, 600);
+}
+function loadStored() {
+  try {
+    const d = JSON.parse(localStorage.getItem(storeKey()) || 'null');
+    return d && d.segments && d.segments.length ? d : null;
+  } catch (e) { return null; }
+}
+function downloadBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+$('saveBtn').onclick = () => {
+  if (!project) return;
+  doSave();
+  downloadBlob(new Blob([JSON.stringify(projectData(), null, 1)], {type: 'application/json'}),
+               src.file.name + '.crop.json');
+};
+$('loadBtn').onclick = () => { if (project) $('projectFile').click(); };
+$('projectFile').onchange = async () => {
+  const f = $('projectFile').files[0]; $('projectFile').value = '';
+  if (!f || !project) return;
+  let d;
+  try { d = JSON.parse(await f.text()); } catch (e) { $('saveState').textContent = 'Not a project file'; return; }
+  if (!d.segments || !d.segments.length) { $('saveState').textContent = 'Not a project file'; return; }
+  if (d.duration && Math.abs(d.duration - project.meta.duration) > 1.0) {
+    $('saveState').textContent = 'That project belongs to a different video'; return;
+  }
+  pushUndo();
+  const thumbs = segs().map(s => ({start: s.start, thumb: s.thumb}));
+  project.segments = d.segments.map((s, i) => ({...s, id: i,
+    thumb: s.thumb || (thumbs[segAt(s.start + 0.01, thumbs)] || {}).thumb || ''}));
+  project.ranges = d.ranges || [];
+  sel = 0;
+  renderSide(); renderTimeline(); renderRanges(); renderIo(); doSave();
+  $('saveState').textContent = '✓ Loaded ' + f.name;
+};
+
+// ---------- rendering ----------
+function renderOverlay() {
+  if (!project || !video.videoWidth) return;
+  const r = contentRect();
+  const st = clampState(stateAt(video.currentTime));
+  const {fw, fh} = cropFracs(st.z);
+  const w = fw * r.w, h = fh * r.h;
+  const x = r.x + (st.c - fw/2) * r.w, y = r.y + (st.y - fh/2) * r.h;
+  cropBox.style.left = x + 'px'; cropBox.style.top = y + 'px';
+  cropBox.style.width = w + 'px'; cropBox.style.height = h + 'px';
+  $('shadeL').style.left = r.x + 'px'; $('shadeL').style.width = Math.max(0, x - r.x) + 'px';
+  $('shadeL').style.top = r.y + 'px'; $('shadeL').style.height = r.h + 'px';
+  $('shadeR').style.left = (x + w) + 'px';
+  $('shadeR').style.width = Math.max(0, r.x + r.w - x - w) + 'px';
+  $('shadeR').style.top = r.y + 'px'; $('shadeR').style.height = r.h + 'px';
+  $('shadeT').style.left = x + 'px'; $('shadeT').style.width = w + 'px';
+  $('shadeT').style.top = r.y + 'px'; $('shadeT').style.height = Math.max(0, y - r.y) + 'px';
+  $('shadeB').style.left = x + 'px'; $('shadeB').style.width = w + 'px';
+  $('shadeB').style.top = (y + h) + 'px'; $('shadeB').style.height = Math.max(0, r.y + r.h - y - h) + 'px';
+  if (!dragging && document.activeElement !== $('zoomSlider')) {
+    $('zoomSlider').value = st.z; $('zoomVal').textContent = st.z.toFixed(2) + 'x';
+  }
+}
+function renderPreview() {
+  const cv = $('preview'), ctx = cv.getContext('2d');
+  if (!video.videoWidth) return;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const st = clampState(stateAt(video.currentTime));
+  const {fw, fh} = cropFracs(st.z);
+  const sw = fw * vw, sh = fh * vh;
+  const sx = (st.c - fw/2) * vw, sy = (st.y - fh/2) * vh;
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+}
+function renderTimeline() {
+  const tl = $('timeline'); tl.innerHTML = '<div id="playhead"></div>';
+  const dur = project.meta.duration;
+  segs().forEach((s, i) => {
+    const d = document.createElement('div');
+    d.className = 'seg' + (i === sel ? ' sel' : '');
+    d.style.width = ((s.end - s.start) / dur * 100) + '%';
+    if (s.thumb) d.style.backgroundImage = `url(${s.thumb})`;
+    const line = document.createElement('div');
+    line.className = 'dotline'; line.style.background = COLORS[i % COLORS.length];
+    d.appendChild(line);
+    d.dataset.i = i;
+    tl.appendChild(d);
+  });
+  renderTimelineKfs();
+}
+function renderTimelineKfs() {
+  const tl = $('timeline');
+  tl.querySelectorAll('.kf').forEach(e => e.remove());
+  const s = segs()[sel]; if (!s) return;
+  const dur = project.meta.duration;
+  if (s.keyframes.length < 2) return;
+  s.keyframes.forEach(k => {
+    const d = document.createElement('div');
+    d.className = 'kf'; d.style.left = (k.t / dur * 100) + '%';
+    tl.appendChild(d);
+  });
+}
+function renderSide() {
+  $('segCount').textContent = segs().length;
+  const list = $('segList'); list.innerHTML = '';
+  segs().forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'segrow' + (i === sel ? ' sel' : '');
+    const color = COLORS[i % COLORS.length];
+    const c0 = s.keyframes[0].c, tracked = s.keyframes.length > 1;
+    row.innerHTML = `
+      <span class="dot" style="background:${color}"></span>
+      <span class="times"><b>${fmtS(s.start)}</b> <span>&mdash; ${fmtS(s.end)}</span></span>
+      <span class="gauge"><i style="background:${color};left:${Math.max(0,(c0-0.14)*100)}%;width:28%"></i></span>
+      <button class="icon track" title="Auto-track faces through this segment">&#10227;</button>
+      <button class="icon del" title="Delete (merge into previous)">&#128465;</button>`;
+    row.querySelector('.gauge i').style.opacity = tracked ? 0.5 : 1;
+    row.onclick = e => {
+      if (e.target.classList.contains('track')) { autoTrack(i); return; }
+      if (e.target.classList.contains('del')) { removeSeg(i); return; }
+      selectSeg(i, true);
+    };
+    list.appendChild(row);
+  });
+  renderKfPanel();
+}
+function renderKfPanel() {
+  const s = segs()[sel], p = $('kfPanel');
+  if (!s) { p.innerHTML = ''; return; }
+  let html = `<b>Segment ${sel + 1}</b> &middot; ${s.keyframes.length} keyframe${s.keyframes.length>1?'s':''}`;
+  if (s.track_job && s.track_job.status) {
+    const tj = s.track_job;
+    html += `<div class="kfrow" style="color:${tj.status === 'error' ? '#ef4444' : 'var(--accent)'}">` +
+            `${tj.status === 'running' ? '&#8987;' : tj.status === 'error' ? '&#10007;' : '&#127919;'} ${esc(tj.message || tj.status)}</div>`;
+  }
+  if (s.keyframes.length > 1) {
+    html += s.keyframes.map((k, j) =>
+      `<div class="kfrow"><span>&#9670; ${fmt(k.t)}</span><span>pos ${(k.c*100).toFixed(0)}%${kfZ(k) > 1.01 ? ' &middot; ' + kfZ(k).toFixed(2) + 'x' : ''}</span>
+       <button data-j="${j}" class="kfgo">&#8594; go</button>
+       <button data-j="${j}" class="kfdel">&#10005;</button></div>`).join('');
+  }
+  html += `<div class="actions">
+    <button id="addKf">+ Keyframe at playhead</button>
+    <button id="clearKf">Reset to single</button></div>`;
+  p.innerHTML = html;
+  p.querySelectorAll('.kfgo').forEach(b => b.onclick = () => { video.currentTime = s.keyframes[+b.dataset.j].t; });
+  p.querySelectorAll('.kfdel').forEach(b => b.onclick = () => {
+    if (s.keyframes.length > 1) { pushUndo(); s.keyframes.splice(+b.dataset.j, 1); scheduleSave(); renderSide(); renderTimelineKfs(); }
+  });
+  $('addKf').onclick = () => {
+    pushUndo();
+    const t = video.currentTime, st = stateAt(t);
+    s.keyframes.push({t: +t.toFixed(3), c: +st.c.toFixed(4), y: +st.y.toFixed(4), z: +st.z.toFixed(3)});
+    s.keyframes.sort((a,b)=>a.t-b.t); scheduleSave(); renderSide(); renderTimelineKfs();
+  };
+  $('clearKf').onclick = () => {
+    pushUndo();
+    const st = stateAt(video.currentTime);
+    s.keyframes = [{t: s.start, c: +st.c.toFixed(4), y: +st.y.toFixed(4), z: +st.z.toFixed(3)}];
+    scheduleSave(); renderSide(); renderTimelineKfs();
+  };
+}
+function selectSeg(i, seek) {
+  sel = Math.max(0, Math.min(segs().length - 1, i));
+  if (seek) video.currentTime = segs()[sel].start + 0.01;
+  renderSide(); renderTimeline();
+}
+
+// ---------- segment ops ----------
+function removeSeg(i) {
+  const list = segs();
+  if (list.length < 2) return;
+  pushUndo();
+  if (i === 0) { list[1].start = list[0].start; }
+  else { list[i-1].end = list[i].end; }
+  list.splice(i, 1);
+  list.forEach((s, j) => s.id = j);
+  if (sel >= list.length) sel = list.length - 1;
+  scheduleSave(); renderSide(); renderTimeline();
+}
+function cutAtPlayhead() {
+  const t = video.currentTime, i = segAt(t), s = segs()[i];
+  if (t - s.start < 0.15 || s.end - t < 0.15) return;
+  pushUndo();
+  const st = stateAt(t);
+  const kf = ts => ({t: +ts.toFixed(3), c: +st.c.toFixed(4), y: +st.y.toFixed(4), z: +st.z.toFixed(3)});
+  const right = { id: 0, start: +t.toFixed(3), end: s.end, thumb: s.thumb, keyframes: [kf(t)] };
+  s.end = +t.toFixed(3);
+  s.keyframes = s.keyframes.filter(k => k.t < t);
+  if (!s.keyframes.length) s.keyframes = [kf(s.start)];
+  segs().splice(i + 1, 0, right);
+  segs().forEach((x, j) => x.id = j);
+  selectSeg(i + 1, false);
+  scheduleSave(); renderTimeline(); renderSide();
+}
+
+// ---------- analysis: faces + detail saliency (ported from crop_vertical.py / app.py) ----------
+let faceDetector = null, faceLoad = null;
+function loadFaces() {   // MediaPipe BlazeFace; framing falls back to detail saliency if it can't load
+  if (!faceLoad) faceLoad = (async () => {
+    try {
+      const {FilesetResolver, FaceDetector} = await import('./vendor/mediapipe-vision.mjs');
+      const fileset = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.0/wasm');
+      faceDetector = await FaceDetector.createFromOptions(fileset, {
+        baseOptions: {modelAssetPath: new URL('./vendor/blaze_face_short_range.tflite', import.meta.url).href},
+        runningMode: 'IMAGE', minDetectionConfidence: 0.5});
+    } catch (e) {
+      console.warn('Face detector unavailable, using detail framing only:', e);
+      faceDetector = null;
+    }
+  })();
+  return faceLoad;
+}
+const workCv = document.createElement('canvas');
+const workCtx = workCv.getContext('2d', {willReadFrequently: true});
+function detailCenter(cv) {
+  // Horizontal center (0..1) of the most detailed window of the target aspect (Laplacian energy).
+  const ww = 480, wh = Math.max(1, Math.round(cv.height * ww / cv.width));
+  workCv.width = ww; workCv.height = wh;
+  workCtx.drawImage(cv, 0, 0, ww, wh);
+  const px = workCtx.getImageData(0, 0, ww, wh).data;
+  const g = new Float32Array(ww * wh);
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = 0.114*px[j+2] + 0.587*px[j+1] + 0.299*px[j];
+  const col = new Float64Array(ww);
+  for (let y = 1; y < wh - 1; y++) for (let x = 1; x < ww - 1; x++) {
+    const i = y * ww + x;
+    col[x] += Math.abs(g[i-1] + g[i+1] + g[i-ww] + g[i+ww] - 4 * g[i]);
+  }
+  const win = Math.max(1, Math.min(ww - 1, Math.round(wh * aspect)));
+  let sum = 0; for (let x = 0; x < win; x++) sum += col[x];
+  let best = -1, bestX = 0;
+  for (let x = 0; x + win <= ww; x++) {
+    if (x > 0) sum += col[x + win - 1] - col[x - 1];
+    const pos = (x + win / 2) / ww;
+    const score = sum * (1 - 0.15 * Math.abs(pos - 0.5) * 2);  // mild center prior
+    if (score > best) { best = score; bestX = x; }
+  }
+  return (bestX + win / 2) / ww;
+}
+function frameCenter(cv) {   // face-weighted center of one frame, detail fallback. 0..1
+  if (faceDetector) {
+    try {
+      const dets = faceDetector.detect(cv).detections || [];
+      if (dets.length) {
+        let wsum = 0, csum = 0;
+        for (const d of dets) {
+          const b = d.boundingBox, s = (d.categories[0] || {}).score || 1;
+          const w = b.width * b.height * s;
+          wsum += w; csum += (b.originX + b.width / 2) * w;
+        }
+        return Math.max(0, Math.min(1, csum / wsum / cv.width));
+      }
+    } catch (e) { /* fall through */ }
+  }
+  return detailCenter(cv);
+}
+const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; };
+
+async function detectCuts(onProgress) {
+  // Adaptive content detector (PySceneDetect-style): per-frame HSV difference on a
+  // 64-px thumbnail, cut where it spikes well above its local neighbourhood.
+  const {vtrack} = src, dur = project.meta.duration;
+  const W = 64, H = Math.max(8, Math.round(64 * project.meta.height / project.meta.width));
+  const sink = new MB.CanvasSink(vtrack, {width: W, height: H, fit: 'fill', poolSize: 2});
+  const ts = [], vals = [];
+  let prev = null, last = 0;
+  const cutCv = document.createElement('canvas'); cutCv.width = W; cutCv.height = H;
+  const cutCtx = cutCv.getContext('2d', {willReadFrequently: true});
+  for await (const {canvas, timestamp} of sink.canvases()) {
+    cutCtx.drawImage(canvas, 0, 0);
+    const px = cutCtx.getImageData(0, 0, W, H).data;
+    const hsv = new Float32Array(W * H * 3);
+    for (let i = 0, j = 0; j < px.length; i += 3, j += 4) {
+      const r = px[j], g = px[j+1], b = px[j+2];
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+      let h = 0;
+      if (d) h = mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      hsv[i] = h * 30; hsv[i+1] = mx ? d / mx * 255 : 0; hsv[i+2] = mx;
+    }
+    if (prev) {
+      let dh = 0, ds = 0, dv = 0;
+      for (let i = 0; i < hsv.length; i += 3) {
+        const a = Math.abs(hsv[i] - prev[i]); dh += Math.min(a, 180 - a);
+        ds += Math.abs(hsv[i+1] - prev[i+1]); dv += Math.abs(hsv[i+2] - prev[i+2]);
+      }
+      const n = W * H;
+      ts.push(timestamp); vals.push((dh / n * (255 / 90) + ds / n + dv / n) / 3);
+    }
+    prev = hsv;
+    if (performance.now() - last > 150) { last = performance.now(); onProgress(Math.min(1, timestamp / dur)); }
+  }
+  const cuts = [], K = 2, MIN_LEN = 0.5;
+  for (let i = 0; i < vals.length; i++) {
+    let s = 0, n = 0;
+    for (let j = Math.max(0, i - K); j <= Math.min(vals.length - 1, i + K); j++) if (j !== i) { s += vals[j]; n++; }
+    const avg = n ? s / n : 0;
+    const t = ts[i], lastCut = cuts.length ? cuts[cuts.length - 1] : 0;
+    if (vals[i] >= 15 && vals[i] >= 3 * (avg + 1e-6) && t - lastCut >= MIN_LEN && dur - t >= MIN_LEN) cuts.push(t);
+  }
+  const bounds = [0, ...cuts, dur];
+  return bounds.slice(0, -1).map((t0, i) => [t0, bounds[i + 1]]);
+}
+
+async function frameSegments(boundaries, saved, onProgress) {
+  // Thumbnail + default crop for each segment: median of 3 sampled frames (25/50/75%).
+  const {vtrack} = src, {width, height} = project.meta;
+  const AW = 640, AH = Math.round(640 * height / width);
+  const sink = new MB.CanvasSink(vtrack, {width: AW, height: AH, fit: 'fill', poolSize: 2});
+  const thumbCv = document.createElement('canvas'); thumbCv.width = 128; thumbCv.height = 72;
+  const tctx = thumbCv.getContext('2d');
+  const times = [];
+  boundaries.forEach(([t0, t1], i) => {
+    [0.5, 0.25, 0.75].forEach((f, k) => {
+      if (k && saved) return;   // restored projects only need thumbnails
+      times.push({i, k, t: Math.min(t1 - 1e-3, t0 + (t1 - t0) * f)});
+    });
+  });
+  times.sort((a, b) => a.t - b.t);
+  const centers = boundaries.map(() => []), thumbs = boundaries.map(() => '');
+  let n = 0;
+  for await (const wc of sink.canvasesAtTimestamps(times.map(x => x.t))) {
+    const job = times[n++];
+    if (wc) {
+      if (job.k === 0) {
+        tctx.drawImage(wc.canvas, 0, 0, 128, 72);
+        thumbs[job.i] = thumbCv.toDataURL('image/jpeg', 0.6);
+      }
+      if (!saved) centers[job.i].push(frameCenter(wc.canvas));
+    }
+    onProgress(n / times.length);
+  }
+  return boundaries.map(([t0, t1], i) => {
+    const base = saved ? saved.segments[i] : null;
+    return {
+      ...(base || {}), id: i, start: +t0.toFixed(3), end: +t1.toFixed(3), thumb: thumbs[i],
+      keyframes: base ? base.keyframes
+        : [{t: +t0.toFixed(3), c: +(centers[i].length ? median(centers[i]) : 0.5).toFixed(4)}],
+    };
+  });
+}
+
+async function autoTrack(i) {
+  // Follow the subject through one segment: sample ~every 2 frames, median-filter
+  // outliers, gaussian-smooth ~0.5s, keyframe every ~0.4s (as the desktop /api/track).
+  const s = segs()[i];
+  if (!s || s.track_job?.status === 'running') return;
+  s.track_job = {status: 'running', message: 'Tracking...'};
+  if (i === sel) renderKfPanel();
+  await loadFaces();
+  const fps = project.meta.fps, stride = 2, step = stride / fps;
+  const times = [];
+  for (let t = s.start; t < s.end - 1e-3; t += step) times.push(t);
+  const AW = 480, AH = Math.round(480 * project.meta.height / project.meta.width);
+  const sink = new MB.CanvasSink(src.vtrack, {width: AW, height: AH, fit: 'fill', poolSize: 2});
+  const ts = [];
+  let cs = [], n = 0;
+  for await (const wc of sink.canvasesAtTimestamps(times)) {
+    const t = times[n++];
+    if (!wc) continue;
+    ts.push(t); cs.push(frameCenter(wc.canvas));
+    if (n % 10 === 0) { s.track_job.message = `Tracking... ${Math.round(n / times.length * 100)}%`; if (i === sel) renderKfPanel(); }
+  }
+  const y0 = kfY(s.keyframes[0]), z0 = kfZ(s.keyframes[0]);  // keep manual y/zoom
+  let kfs;
+  if (!ts.length) kfs = [{t: s.start, c: 0.5}];
+  else {
+    if (cs.length >= 5) {   // median filter outliers
+      const k = Math.min(7, (cs.length >> 1) * 2 - 1), pad = k >> 1;
+      const p = [...Array(pad).fill(cs[0]), ...cs, ...Array(pad).fill(cs[cs.length - 1])];
+      cs = cs.map((_, j) => median(p.slice(j, j + k)));
+    }
+    const sigma = Math.max(1, fps * 0.5 / stride), radius = Math.floor(3 * sigma);
+    const kern = []; let ks = 0;
+    for (let x = -radius; x <= radius; x++) { const v = Math.exp(-0.5 * (x / sigma) ** 2); kern.push(v); ks += v; }
+    const at = j => cs[Math.max(0, Math.min(cs.length - 1, j))];
+    cs = cs.map((_, j) => kern.reduce((acc, v, q) => acc + v * at(j + q - radius), 0) / ks);
+    const sorted = [...cs].sort((a, b) => a - b), pct = p => sorted[Math.round((sorted.length - 1) * p)];
+    if (pct(0.95) - pct(0.05) < 0.02) kfs = [{t: +s.start.toFixed(3), c: +median(cs).toFixed(4)}];   // static shot
+    else {
+      const every = Math.max(1, Math.floor(0.4 * fps / stride));
+      kfs = [];
+      for (let j = 0; j < ts.length; j += every) kfs.push({t: +ts[j].toFixed(3), c: +cs[j].toFixed(4)});
+      if (kfs[kfs.length - 1].t < ts[ts.length - 1])
+        kfs.push({t: +ts[ts.length - 1].toFixed(3), c: +cs[cs.length - 1].toFixed(4)});
+    }
+  }
+  pushUndo();
+  s.keyframes = kfs.map(k => ({...k, y: y0, z: z0}));
+  s.track_job = {status: 'done', message: kfs.length > 1 ? `Tracked: ${kfs.length} keyframes` : 'Static shot: one position'};
+  scheduleSave(); renderSide(); renderTimelineKfs();
+}
+
+// ---------- shorts (manual export ranges) ----------
+let pendingIn = null, pendingOut = null;
+const ranges = () => { if (project && !project.ranges) project.ranges = []; return project ? project.ranges : []; };
+function renderIo() {
+  $('ioLabel').textContent = (pendingIn === null ? '–' : fmt(pendingIn)) + ' / ' +
+                             (pendingOut === null ? '–' : fmt(pendingOut));
+}
+function renderRanges() {
+  $('rangeCount').textContent = ranges().length;
+  const list = $('rangeList'); list.innerHTML = '';
+  ranges().forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'rrow';
+    const color = COLORS[i % COLORS.length];
+    const opts = ['9:16', '1:1', '4:5'].map(a =>
+      `<option value="${a}" ${(r.aspect || aspectKey) === a ? 'selected' : ''}>${a}</option>`).join('');
+    const hook = (r.hook_start !== undefined && r.hook_start !== null)
+      ? `<span title="Hook ${fmt(r.hook_start)}–${fmt(r.hook_end)} — plays first as tease, replays in place as payoff" style="cursor:help">&#129693;</span>` : '';
+    row.innerHTML = `
+      <span class="chip" style="background:${color}"></span>
+      <input value="${esc(r.name)}" spellcheck="false">
+      <span class="rtimes">${fmt(r.start)} &ndash; ${fmt(r.end)} &middot; ${(r.end - r.start).toFixed(1)}s</span>${hook}
+      <select class="rasp" title="Aspect for this short"
+        style="background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:11px">${opts}</select>
+      <button class="icon go" title="Play from start">&#9654;</button>
+      <button class="icon del" title="Remove">&#10005;</button>`;
+    row.querySelector('input').onchange = e => { pushUndo(); r.name = e.target.value || `short-${i+1}`; scheduleSave(); };
+    row.querySelector('.rasp').onchange = e => { pushUndo(); r.aspect = e.target.value; scheduleSave(); };
+    row.querySelector('.go').onclick = () => { video.currentTime = r.start; video.play(); };
+    row.querySelector('.del').onclick = () => { pushUndo(); ranges().splice(i, 1); scheduleSave(); renderRanges(); };
+    list.appendChild(row);
+  });
+  renderRangeStrip();
+  $('exportBtn').textContent = ranges().length
+    ? `Export ${ranges().length} short${ranges().length > 1 ? 's' : ''}`
+    : `Export ${aspectKey} video`;
+}
+function renderRangeStrip() {
+  const strip = $('rangeStrip'); strip.innerHTML = '';
+  if (!project) return;
+  const dur = project.meta.duration;
+  ranges().forEach((r, i) => {
+    const b = document.createElement('div');
+    b.className = 'rbar';
+    b.style.left = (r.start / dur * 100) + '%';
+    b.style.width = ((r.end - r.start) / dur * 100) + '%';
+    b.style.background = COLORS[i % COLORS.length];
+    b.title = `${r.name}  ${fmt(r.start)}–${fmt(r.end)}`;
+    b.onclick = () => { video.currentTime = r.start; };
+    strip.appendChild(b);
+  });
+  [pendingIn, pendingOut].forEach(t => {
+    if (t === null) return;
+    const m = document.createElement('div');
+    m.className = 'rmark'; m.style.left = (t / dur * 100) + '%';
+    strip.appendChild(m);
+  });
+}
+$('setIn').onclick = () => { pendingIn = +video.currentTime.toFixed(3);
+  if (pendingOut !== null && pendingOut <= pendingIn) pendingOut = null; renderIo(); renderRangeStrip(); };
+$('setOut').onclick = () => { pendingOut = +video.currentTime.toFixed(3);
+  if (pendingIn !== null && pendingOut <= pendingIn) pendingIn = null; renderIo(); renderRangeStrip(); };
+$('addRange').onclick = () => {
+  if (pendingIn === null || pendingOut === null || pendingOut <= pendingIn) return;
+  pushUndo();
+  ranges().push({start: pendingIn, end: pendingOut, name: `short-${ranges().length + 1}`});
+  ranges().sort((a, b) => a.start - b.start);
+  pendingIn = pendingOut = null;
+  renderIo(); renderRanges(); scheduleSave();
+};
+
+// ---------- crop box drag ----------
+cropBox.addEventListener('pointerdown', e => {
+  dragging = true; cropBox.setPointerCapture(e.pointerId);
+  const st = stateAt(video.currentTime);
+  dragState = {c: st.c, y: st.y};
+  e.preventDefault();
+});
+cropBox.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const r = contentRect();
+  const st = stateAt(video.currentTime);
+  const {fw, fh} = cropFracs(st.z);
+  const box = stage.getBoundingClientRect();
+  let c = (e.clientX - box.left - r.x) / r.w;
+  let y = (e.clientY - box.top - r.y) / r.h;
+  dragState = {
+    c: Math.max(fw/2, Math.min(1 - fw/2, c)),
+    y: Math.max(fh/2, Math.min(1 - fh/2, y)),
+  };
+});
+cropBox.addEventListener('pointerup', e => {
+  if (!dragging) return;
+  dragging = false;
+  const d = dragState; dragState = null;
+  setCrop(video.currentTime, {c: d.c, y: d.y});
+});
+$('zoomSlider').addEventListener('input', () => {
+  const z = +$('zoomSlider').value;
+  $('zoomVal').textContent = z.toFixed(2) + 'x';
+  setCrop(video.currentTime, {z});
+});
+$('safeBtn').onclick = () => {
+  cropBox.classList.toggle('showsafe');
+  $('safeBtn').classList.toggle('on');
+};
+$('aspectSel').onchange = () => {
+  aspectKey = $('aspectSel').value;
+  const [aw, ah] = ASPECTS[aspectKey];
+  aspect = aw / ah;
+  $('cropTag').textContent = aspectKey;
+  $('previewTitle').textContent = `Preview (${aspectKey})`;
+  const cv = $('preview');
+  cv.width = aw >= ah ? 360 : Math.round(480 * aw / ah);
+  cv.height = aw >= ah ? Math.round(360 * ah / aw) : 480;
+  cv.style.aspectRatio = `${aw}/${ah}`;
+  renderRanges();
+};
+$('timeline').addEventListener('pointerdown', e => {
+  if (!project) return;
+  const tl = $('timeline'), r = tl.getBoundingClientRect();
+  const seek = ev => {
+    const f = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width));
+    video.currentTime = f * project.meta.duration;
+    selectSeg(segAt(video.currentTime), false);
+  };
+  seek(e);
+  const move = ev => seek(ev);
+  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+});
+
+// ---------- transport ----------
+$('playBtn').onclick = () => video.paused ? video.play() : video.pause();
+video.addEventListener('play', () => $('playBtn').innerHTML = '&#10074;&#10074;');
+video.addEventListener('pause', () => $('playBtn').innerHTML = '&#9654;');
+$('stepF').onclick = () => { video.pause(); video.currentTime += 1 / (project?.meta.fps || 24); };
+$('stepB').onclick = () => { video.pause(); video.currentTime -= 1 / (project?.meta.fps || 24); };
+$('prevSeg').onclick = () => selectSeg(segAt(video.currentTime) - (video.currentTime - segs()[segAt(video.currentTime)].start < 0.3 ? 1 : 0), true);
+$('nextSeg').onclick = () => selectSeg(segAt(video.currentTime) + 1, true);
+$('cutBtn').onclick = cutAtPlayhead;
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || !project || $('loader').style.display !== 'none') return;
+  if (e.code === 'Space') { e.preventDefault(); $('playBtn').onclick(); }
+  if (e.code === 'ArrowRight') e.shiftKey ? $('nextSeg').onclick() : $('stepF').onclick();
+  if (e.code === 'ArrowLeft') e.shiftKey ? $('prevSeg').onclick() : $('stepB').onclick();
+  if (e.code === 'ArrowUp') { e.preventDefault(); $('prevSeg').onclick(); }
+  if (e.code === 'ArrowDown') { e.preventDefault(); $('nextSeg').onclick(); }
+  if (e.code === 'KeyI') $('setIn').onclick();
+  if (e.code === 'KeyO') $('setOut').onclick();
+  if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('saveBtn').onclick(); }
+  if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    e.shiftKey ? redo() : undo();
+  }
+  if (e.code === 'KeyY' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); redo(); }
+});
+
+// ---------- timeline zoom ----------
+let tlZoom = 1;
+function applyTlZoom() {
+  tlZoom = Math.max(1, Math.min(20, tlZoom));
+  $('tlInner').style.width = (tlZoom * 100) + '%';
+}
+function zoomAt(factor, clientX) {
+  const sc = $('tlScroll'), rect = sc.getBoundingClientRect();
+  const cursor = clientX === undefined ? rect.width / 2 : clientX - rect.left;
+  const timeFrac = (sc.scrollLeft + cursor) / $('tlInner').clientWidth;
+  tlZoom *= factor; applyTlZoom();
+  sc.scrollLeft = timeFrac * $('tlInner').clientWidth - cursor;
+}
+$('tlZoomIn').onclick = () => zoomAt(1.5);
+$('tlZoomOut').onclick = () => zoomAt(1 / 1.5);
+$('tlZoomFit').onclick = () => { tlZoom = 1; applyTlZoom(); };
+$('tlScroll').addEventListener('wheel', e => {
+  if (!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  zoomAt(e.deltaY < 0 ? 1.25 : 0.8, e.clientX);
+}, {passive: false});
+
+// ---------- RAF loop ----------
+function tick() {
+  if (project) {
+    renderOverlay(); renderPreview();
+    $('timeLabel').textContent = fmt(video.currentTime) + ' / ' + fmt(project.meta.duration);
+    $('playhead').style.left = (video.currentTime / project.meta.duration * 100) + '%';
+    if (!video.paused && tlZoom > 1) {  // keep playhead in view while playing
+      const sc = $('tlScroll');
+      const px = video.currentTime / project.meta.duration * $('tlInner').clientWidth;
+      if (px < sc.scrollLeft + 40 || px > sc.scrollLeft + sc.clientWidth - 40)
+        sc.scrollLeft = px - sc.clientWidth / 2;
+    }
+    const cur = segAt(video.currentTime);
+    if (!dragging && cur !== sel) {
+      sel = cur; renderSide(); renderTimeline();
+      const row = $('segList').children[sel];
+      if (row) row.scrollIntoView({block: 'nearest'});
+    }
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// ---------- open & analyze ----------
+let busy = false;
+function loadMsg(text, frac, err) {
+  $('loadStatus').textContent = text;
+  $('loadStatus').classList.toggle('err', !!err);
+  if (frac !== undefined) $('loadBar').style.width = (frac * 100) + '%';
+}
+$('openBtn').onclick = () => { if (!busy) $('loader').style.display = 'flex'; };
+$('drop').onclick = () => { if (!busy) $('videoFile').click(); };
+$('videoFile').onchange = () => { const f = $('videoFile').files[0]; $('videoFile').value = ''; if (f) openVideo(f); };
+['dragenter', 'dragover'].forEach(ev => window.addEventListener(ev, e => {
+  e.preventDefault(); $('drop').classList.add('over');
+  if ($('loader').style.display === 'none' && !busy) $('loader').style.display = 'flex';
+}));
+['dragleave', 'drop'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+window.addEventListener('drop', e => { const f = e.dataTransfer?.files?.[0]; if (f && !busy) openVideo(f); });
+
+async function openVideo(file, {fresh = false} = {}) {
+  busy = true;
+  try {
+    loadMsg('Opening ' + file.name + '...', 0.02);
+    const input = new MB.Input({source: new MB.BlobSource(file), formats: MB.ALL_FORMATS});
+    let vtrack;
+    try { vtrack = await input.getPrimaryVideoTrack(); }
+    catch (e) { throw new Error('This file type isn\'t supported in the browser. Try an MP4, MOV or WebM — or the desktop app.'); }
+    if (!vtrack) throw new Error('No video track found in this file.');
+    if (!(await vtrack.canDecode()))
+      throw new Error(`This browser can't decode ${vtrack.codec || 'this'} video. Try Chrome/Edge, re-encode to H.264, or use the desktop app (handles HEVC, 10-bit and 4K).`);
+    let atrack = await input.getPrimaryAudioTrack();
+    if (atrack && !(await atrack.canDecode())) atrack = null;
+    const duration = await input.computeDuration();
+    const stats = await vtrack.computePacketStats(120);
+    const meta = {duration, fps: stats.averagePacketRate || 30,
+                  width: vtrack.displayWidth, height: vtrack.displayHeight};
+
+    if (src) URL.revokeObjectURL(src.url);
+    src = {file, input, vtrack, atrack, url: URL.createObjectURL(file)};
+    project = {meta, segments: [], ranges: []};
+    undoStack.length = redoStack.length = 0; updateUndoButtons();
+    $('resultList').innerHTML = ''; $('resultVideo').style.display = 'none'; $('exportStatus').textContent = '';
+
+    let saved = fresh ? null : loadStored();
+    if (saved && Math.abs((saved.duration || 0) - duration) > 1.0) saved = null;
+    let boundaries;
+    if (saved) {
+      boundaries = saved.segments.map(s => [s.start, s.end]);
+    } else {
+      loadFaces();   // start fetching the face model while cuts are detected
+      loadMsg('Detecting cuts...', 0.05);
+      boundaries = await detectCuts(f => loadMsg(`Detecting cuts... ${Math.round(f * 100)}%`, 0.05 + 0.65 * f));
+      await loadFaces();
+    }
+    loadMsg('Framing segments...', 0.7);
+    project.segments = await frameSegments(boundaries, saved,
+      f => loadMsg(`Framing segments... ${Math.round(f * 100)}%`, 0.7 + 0.3 * f));
+    project.ranges = saved ? (saved.ranges || []) : [];
+    sel = 0;
+
+    video.src = src.url;
+    await new Promise((res, rej) => {
+      video.addEventListener('loadedmetadata', res, {once: true});
+      video.addEventListener('error', () => rej(new Error(
+        'This browser can analyze the file but not play it back. Try Chrome/Edge or the desktop app.')), {once: true});
+    });
+    renderTimeline(); renderSide(); renderRanges(); renderIo();
+    $('loader').style.display = 'none';
+    loadMsg('', 0);
+    doSave();
+    $('saveState').textContent = saved ? '✓ Restored your saved edits' : (faceDetector ? '' : 'Face detection unavailable — framed on detail');
+  } catch (e) {
+    console.error(e);
+    loadMsg(e.message || String(e), 0, true);
+    project = null;
+  } finally {
+    busy = false;
+  }
+}
+$('reanalyzeBtn').onclick = () => {
+  if (!src || busy) return;
+  if (!confirm('Re-detect cuts and framing? This replaces your current edits (download a project file first to keep them).')) return;
+  $('loader').style.display = 'flex';
+  openVideo(src.file, {fresh: true});
+};
+
+// ---------- export (WebCodecs via Mediabunny) ----------
+function sliceAudio(buf, from, to) {   // AudioBuffer restricted to [from, to) seconds
+  const sr = buf.sampleRate;
+  const a = Math.max(0, Math.round(from * sr)), b = Math.min(buf.length, Math.round(to * sr));
+  if (b - a <= 0) return null;
+  if (a === 0 && b === buf.length) return buf;
+  const out = new AudioBuffer({length: b - a, numberOfChannels: buf.numberOfChannels, sampleRate: sr});
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) out.copyToChannel(buf.getChannelData(ch).subarray(a, b), ch);
+  return out;
+}
+const safeName = name => (String(name).replace(/[^\w\- ]/g, '').trim().replace(/ /g, '_')) || 'short';
+
+async function exportJob(job, onFrame) {
+  const {vtrack, atrack} = src, {width: srcW, height: srcH} = project.meta;
+  const [TW, TH] = ASPECTS[job.aspect] || ASPECTS['9:16'];
+  const asp = TW / TH;
+  const segList = structuredClone(segs());
+  const vcodec = await MB.getFirstEncodableVideoCodec(['avc', 'vp9', 'av1', 'hevc'], {width: TW, height: TH});
+  if (!vcodec) throw new Error('This browser can\'t encode video. Use Chrome, Edge or Safari 17+ — or the desktop app.');
+  let acodec = null;
+  if (atrack) acodec = await MB.getFirstEncodableAudioCodec(['aac', 'opus'],
+    {numberOfChannels: atrack.numberOfChannels, sampleRate: atrack.sampleRate});
+
+  const total = job.parts.reduce((s, [a, b]) => s + (b - a), 0);
+  let target, writable = null;
+  if (total > 180 && window.showSaveFilePicker) {   // long renders stream to disk instead of RAM
+    const handle = await window.showSaveFilePicker({suggestedName: job.name,
+      types: [{description: 'MP4 video', accept: {'video/mp4': ['.mp4']}}]});
+    writable = await handle.createWritable();
+    target = new MB.StreamTarget(writable, {chunked: true});
+  } else target = new MB.BufferTarget();
+
+  const output = new MB.Output({format: new MB.Mp4OutputFormat(), target});
+  const outCv = document.createElement('canvas'); outCv.width = TW; outCv.height = TH;
+  const ctx = outCv.getContext('2d'); ctx.imageSmoothingQuality = 'high';
+  const vsrc = new MB.CanvasSource(outCv, {codec: vcodec, bitrate: MB.QUALITY_HIGH, keyFrameInterval: 2});
+  output.addVideoTrack(vsrc, {frameRate: project.meta.fps});
+  let asrc = null;
+  if (acodec) { asrc = new MB.AudioBufferSource({codec: acodec, bitrate: MB.QUALITY_HIGH}); output.addAudioTrack(asrc); }
+  await output.start();
+
+  const cropW0 = Math.min(srcW, srcH * asp), cropH0 = cropW0 / asp;
+  let offset = 0;
+  for (const [t0, t1] of job.parts) {   // hook tease first (if any), then the playthrough
+    const sink = new MB.CanvasSink(vtrack, {poolSize: 1});
+    // audio is pulled alongside video so the two tracks stay interleaved
+    const aIter = asrc ? new MB.AudioBufferSink(atrack).buffers(t0, t1) : null;
+    let aDoneTo = t0, aEnded = !aIter;
+    const pumpAudio = async upTo => {
+      while (!aEnded && aDoneTo < upTo) {
+        const r = await aIter.next();
+        if (r.done) { aEnded = true; break; }
+        const {buffer, timestamp} = r.value;
+        const from = Math.max(t0, timestamp, aDoneTo), to = Math.min(t1, timestamp + buffer.duration);
+        const part = sliceAudio(buffer, from - timestamp, to - timestamp);
+        if (part) await asrc.add(part);
+        aDoneTo = Math.max(aDoneTo, to);
+      }
+    };
+    for await (const {canvas, timestamp, duration} of sink.canvases(t0, t1)) {
+      if (timestamp + duration <= t0 + 1e-4 || timestamp >= t1) continue;
+      const tm = timestamp + duration / 2;
+      const st = clampState(keyframeState(segList[segAt(tm, segList)], tm), asp);
+      const cw = cropW0 / st.z, ch = cropH0 / st.z;
+      const cx = Math.max(cw / 2, Math.min(srcW - cw / 2, st.c * srcW));
+      const cy = Math.max(ch / 2, Math.min(srcH - ch / 2, st.y * srcH));
+      ctx.drawImage(canvas, cx - cw / 2, cy - ch / 2, cw, ch, 0, 0, TW, TH);
+      const outT = offset + Math.max(0, timestamp - t0);
+      await vsrc.add(outT, Math.min(duration, t1 - Math.max(t0, timestamp)));
+      await pumpAudio(timestamp + duration);
+      onFrame(Math.min(t1, timestamp + duration) - t0 + offset);
+    }
+    await pumpAudio(t1);
+    if (aIter && !aEnded) await aIter.return();
+    offset += t1 - t0;
+  }
+  await output.finalize();
+  if (writable) return {name: job.name, savedToDisk: true};
+  return {name: job.name, blob: new Blob([target.buffer], {type: 'video/mp4'})};
+}
+
+let resultUrls = [];
+$('exportBtn').onclick = async () => {
+  if (!project || busy) return;
+  busy = true;
+  $('exportBtn').disabled = true;
+  $('exportBar').style.display = 'block';
+  $('resultVideo').style.display = 'none';
+  $('resultList').innerHTML = '';
+  resultUrls.forEach(u => URL.revokeObjectURL(u)); resultUrls = [];
+  const stem = src.file.name.replace(/\.[^.]+$/, '');
+  const jobs = ranges().length
+    ? ranges().map((r, i) => {
+        const parts = [];
+        if (r.hook_start != null && r.hook_end != null && +r.hook_end > +r.hook_start)
+          parts.push([+r.hook_start, +r.hook_end]);
+        parts.push([r.start, r.end]);
+        return {parts, aspect: r.aspect || aspectKey, name: `${stem}_${safeName(r.name || `short-${i+1}`)}.mp4`};
+      })
+    : [{parts: [[0, project.meta.duration]], aspect: aspectKey, name: `${stem}_crop_edit.mp4`}];
+  const grand = jobs.reduce((s, j) => s + j.parts.reduce((a, [x, y]) => a + (y - x), 0), 0);
+  let before = 0, lastUi = 0;
+  const started = performance.now();
+  const results = [];
+  try {
+    for (const [ji, job] of jobs.entries()) {
+      const len = job.parts.reduce((a, [x, y]) => a + (y - x), 0);
+      results.push(await exportJob(job, done => {
+        if (performance.now() - lastUi < 200) return;
+        lastUi = performance.now();
+        const f = Math.min(1, (before + done) / grand);
+        const el = (performance.now() - started) / 1000, eta = f > 0.02 ? el / f - el : null;
+        $('exportBar').querySelector('i').style.width = (f * 100) + '%';
+        $('exportStatus').textContent = `Rendering ${ji + 1}/${jobs.length}... ${Math.round(f * 100)}%` +
+          (eta !== null ? ` · ~${fmtS(eta)} left` : '');
+      }));
+      before += len;
+    }
+    $('exportBar').querySelector('i').style.width = '100%';
+    $('exportStatus').textContent = `Exported ${results.length} file${results.length > 1 ? 's' : ''}. Click a name to download.`;
+    const list = $('resultList');
+    results.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'resrow';
+      if (r.savedToDisk) { row.innerHTML = `<span>&#10003; ${esc(r.name)} saved to disk</span>`; list.appendChild(row); return; }
+      const url = URL.createObjectURL(r.blob); resultUrls.push(url);
+      row.innerHTML = `<button>&#9654;</button><a href="${url}" download="${esc(r.name)}">${esc(r.name)}</a>
+        <span style="color:var(--dim)">${(r.blob.size / 1048576).toFixed(1)} MB</span>`;
+      row.querySelector('button').onclick = () => {
+        const rv = $('resultVideo'); rv.src = url; rv.style.display = 'block'; rv.play();
+      };
+      list.appendChild(row);
+    });
+    if (results.length === 1 && !results[0].savedToDisk) {
+      const rv = $('resultVideo'); rv.src = resultUrls[0]; rv.style.display = 'block';
+    }
+  } catch (e) {
+    console.error(e);
+    $('exportStatus').textContent = e.name === 'AbortError' ? 'Export cancelled.' : 'Export failed: ' + (e.message || e);
+  } finally {
+    busy = false;
+    $('exportBtn').disabled = false;
+  }
+};
+
+if (!('VideoEncoder' in window) || !('VideoDecoder' in window)) {
+  loadMsg('This browser lacks WebCodecs, which Crop Studio needs. Use Chrome, Edge or Safari 17+, or the desktop app.', 0, true);
+}
+</script>
+</body>
+</html>
