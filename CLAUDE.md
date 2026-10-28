@@ -60,6 +60,9 @@ python app.py          # → http://127.0.0.1:5124
 
 No build step. No deployment target — it's a local tool (Flask dev server, binds 127.0.0.1).
 
+User-facing setup for every optional feature (node packs, model files + download links +
+folders) lives in `SETUP.md` — update it when a workflow's models or nodes change.
+
 ## Environment variables (all optional — names only)
 
 - `COMFY_URLS` — comma-separated ComfyUI endpoints, first reachable wins

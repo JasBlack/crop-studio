@@ -35,6 +35,9 @@ Without a ComfyUI server or an LLM configured the app still fully works — AI o
 runs as a labeled mock, subject tracking falls back to optical flow, and Suggest explains
 what it needs. Face detection is bundled (`models/det_10g.onnx`), no downloads.
 
+**Setting up the AI features** (captions, Suggest shorts, ComfyUI outpainting and SAM tracking,
+with links to every model): see [`SETUP.md`](SETUP.md).
+
 See `CLAUDE.md` for architecture, current status, and hard-won gotchas. Standalone CLI
 versions of the core steps: `split_scenes.py` (cut splitting), `crop_vertical.py`
 (auto-crop + stitch), `export_frames.py` (green 9:16 frames for outpaint workflows).
