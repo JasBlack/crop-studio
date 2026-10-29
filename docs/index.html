@@ -1427,15 +1427,20 @@ $('exportBtn').onclick = async () => {
   $('resultList').innerHTML = '';
   resultUrls.forEach(u => URL.revokeObjectURL(u)); resultUrls = [];
   const stem = src.file.name.replace(/\.[^.]+$/, '');
+  // Unique names: time range + export time, so editors (e.g. DaVinci Resolve) never see
+  // two different exports with the same file name.
+  const tc = t => `${Math.floor(t / 60)}m${String(Math.floor(t % 60)).padStart(2, '0')}s`;
+  const now = new Date(), stamp = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map(n => String(n).padStart(2, '0')).join('');
   const jobs = ranges().length
     ? ranges().map((r, i) => {
         const parts = [];
         if (r.hook_start != null && r.hook_end != null && +r.hook_end > +r.hook_start)
           parts.push([+r.hook_start, +r.hook_end]);
         parts.push([r.start, r.end]);
-        return {parts, aspect: r.aspect || aspectKey, name: `${stem}_${safeName(r.name || `short-${i+1}`)}.mp4`};
+        return {parts, aspect: r.aspect || aspectKey, name: `${stem}_${safeName(r.name || `short-${i+1}`)}_${tc(r.start)}-${tc(r.end)}_${stamp}.mp4`};
       })
-    : [{parts: [[0, project.meta.duration]], aspect: aspectKey, name: `${stem}_crop_edit.mp4`}];
+    : [{parts: [[0, project.meta.duration]], aspect: aspectKey, name: `${stem}_crop_edit_${stamp}.mp4`}];
   const grand = jobs.reduce((s, j) => s + j.parts.reduce((a, [x, y]) => a + (y - x), 0), 0);
   let before = 0, lastUi = 0;
   const started = performance.now();

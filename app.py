@@ -13,6 +13,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import cv2
@@ -439,6 +440,10 @@ def export_worker(segments, ranges, default_aspect, crf, captions):
         words = ensure_words(path) if captions else None
 
         stem = Path(path).stem
+        # Unique names (time range + export time) so editors never see two different
+        # exports with the same file name, and re-exports don't overwrite earlier ones.
+        stamp = time.strftime("%H%M%S")
+        tc = lambda t: f"{int(t // 60)}m{int(t % 60):02d}s"
         if ranges:
             jobs = []
             for i, r in enumerate(ranges):
@@ -449,10 +454,10 @@ def export_worker(segments, ranges, default_aspect, crf, captions):
                 parts.append((r["start"], r["end"]))      # then the full playthrough
                 jobs.append({"parts": parts,
                              "aspect": r.get("aspect") or default_aspect,
-                             "out": str(Path(path).with_name(f"{stem}_{safe_name(r.get('name', f'short-{i+1}'))}.mp4"))})
+                             "out": str(Path(path).with_name(f"{stem}_{safe_name(r.get('name', f'short-{i+1}'))}_{tc(r['start'])}-{tc(r['end'])}_{stamp}.mp4"))})
         else:
             jobs = [{"parts": [(0.0, meta["duration"])], "aspect": default_aspect,
-                     "out": str(Path(path).with_name(f"{stem}_crop_edit.mp4"))}]
+                     "out": str(Path(path).with_name(f"{stem}_crop_edit_{stamp}.mp4"))}]
 
         frames_all = sum(max(1, int((t1 - t0) * fps)) for j in jobs for t0, t1 in j["parts"])
         done_frames = 0
