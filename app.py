@@ -61,6 +61,17 @@ ASPECT = 9 / 16
 ASPECTS = {"9:16": (1080, 1920), "1:1": (1080, 1080), "4:5": (1080, 1350)}
 
 
+def output_size(aspect_key: str, src_w: int, src_h: int):
+    """At least the 1080-wide preset; native crop size when the source has more pixels
+    (e.g. 4K -> 1216x2160 at 9:16) so high-res footage isn't downscaled on export."""
+    pw, ph = ASPECTS.get(aspect_key, ASPECTS["9:16"])
+    asp = pw / ph
+    crop_h = min(src_w, src_h * asp) / asp
+    if crop_h <= ph:
+        return pw, ph
+    return 2 * round(crop_h * asp / 2), 2 * round(crop_h / 2)
+
+
 def set_state(**kw):
     with STATE_LOCK:
         state.update(kw)
@@ -197,6 +208,8 @@ def analyze_worker(path: str):
             if saved:
                 s_old = saved["segments"][i]
                 kfs = s_old["keyframes"]
+                if "auto_c" in s_old:
+                    extra["auto_c"] = s_old["auto_c"]
                 if s_old.get("outpaint"):
                     op = s_old["outpaint"]
                     # a job can't survive an app restart — mark it interrupted
@@ -206,6 +219,7 @@ def analyze_worker(path: str):
                     extra["outpaint"] = op
             else:
                 kfs = [{"t": round(t0, 3), "c": round(center, 4)}]
+                extra["auto_c"] = round(center, 4)  # lets "clear all" return to auto-framing
             segments.append({"id": i, "start": round(t0, 3), "end": round(t1, 3),
                              "keyframes": kfs, "thumb": thumb, **extra})
             set_state(progress=0.1 + 0.9 * (i + 1) / len(boundaries),
@@ -444,7 +458,7 @@ def export_worker(segments, ranges, default_aspect, crf, captions):
         done_frames = 0
         outs = []
         for ji, job in enumerate(jobs):
-            target_w, target_h = ASPECTS.get(job["aspect"], ASPECTS["9:16"])
+            target_w, target_h = output_size(job["aspect"], src_w, src_h)
             crop_w0 = min(src_w, src_h * target_w / target_h)
             crop_h0 = crop_w0 * target_h / target_w
             parts = [(t0, t1) for t0, t1 in job["parts"] if t1 > t0]

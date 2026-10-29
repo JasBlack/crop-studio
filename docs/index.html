@@ -135,6 +135,12 @@
                     font-variant-numeric: tabular-nums; }
   .kfpanel .kfrow button { background: none; border: none; color: var(--dim); cursor: pointer; }
   .kfpanel .actions { display: flex; gap: 8px; margin-top: 6px; }
+  .card h2 .h2key { margin-left: auto; background: var(--key); border: 1px solid var(--keyline); color: var(--muted);
+                    border-radius: 7px; padding: 2px 8px; cursor: pointer; box-shadow: 0 2px 0 var(--keyshadow);
+                    font: 500 9px 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: lowercase; }
+  .card h2 .h2key:hover { border-color: var(--muted); color: var(--text); }
+  #freshRow { display: none; margin-top: 10px; gap: 8px; align-items: center; color: var(--muted); cursor: pointer; }
+  #freshRow input { accent-color: var(--accent); }
   .kfpanel .actions button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
                              border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
   .previewCard { align-items: center; }
@@ -408,7 +414,7 @@
 
   <div class="side">
     <div class="card" style="flex:1 0 auto; min-height:230px; max-height:34vh">
-      <h2>Crop Positions <span class="count" id="segCount">0</span></h2>
+      <h2>Crop Positions <button id="clearAllBtn" class="h2key" title="Reset every segment to its auto-framed position (removes all keyframes, zoom and manual moves)">clear all</button><span class="count" id="segCount" style="margin-left:8px">0</span></h2>
       <div id="segList"></div>
       <div class="kfpanel" id="kfPanel"></div>
     </div>
@@ -453,10 +459,11 @@
        segment gets an auto-framed 9:16 crop (faces prioritized). Adjust, then export.</p>
     <div id="drop"><b>Choose a video</b> or drop it here</div>
     <input type="file" id="videoFile" accept="video/*,.mkv,.mov" style="display:none">
+    <label id="freshRow"><input type="checkbox" id="freshChk"> Start fresh: ignore crop positions saved for this video</label>
     <div id="loadStatus"></div>
     <div class="bar"><i id="loadBar"></i></div>
     <div class="fine">Your video never leaves your computer: everything runs in this browser.
-      Works best in Chrome or Edge. For 4K/HEVC footage, AI outpainting, tracking and captions,
+      Works best in Chrome or Edge. For HEVC/10-bit footage, AI outpainting, tracking and captions,
       get the <a class="repo-link" target="_blank" rel="noopener">desktop app</a>.</div>
   </div>
 </div>
@@ -952,6 +959,7 @@ async function frameSegments(boundaries, saved, onProgress) {
     const base = saved ? saved.segments[i] : null;
     return {
       ...(base || {}), id: i, start: +t0.toFixed(3), end: +t1.toFixed(3), thumb: thumbs[i],
+      auto_c: base ? base.auto_c : +(centers[i].length ? median(centers[i]) : 0.5).toFixed(4),
       keyframes: base ? base.keyframes
         : [{t: +t0.toFixed(3), c: +(centers[i].length ? median(centers[i]) : 0.5).toFixed(4)}],
     };
@@ -1115,12 +1123,16 @@ $('safeBtn').onclick = () => {
   cropBox.classList.toggle('showsafe');
   $('safeBtn').classList.toggle('on');
 };
+function renderPreviewTitle() {
+  const [w, h] = outputSize(aspectKey);
+  $('previewTitle').textContent = `Preview (${aspectKey} · ${w}×${h})`;
+}
 $('aspectSel').onchange = () => {
   aspectKey = $('aspectSel').value;
   const [aw, ah] = ASPECTS[aspectKey];
   aspect = aw / ah;
   $('cropTag').textContent = aspectKey;
-  $('previewTitle').textContent = `Preview (${aspectKey})`;
+  renderPreviewTitle();
   const cv = $('preview');
   cv.width = aw >= ah ? 360 : Math.round(480 * aw / ah);
   cv.height = aw >= ah ? Math.round(360 * ah / aw) : 480;
@@ -1219,12 +1231,18 @@ function loadMsg(text, frac, err) {
   $('loadStatus').classList.toggle('err', !!err);
   if (frac !== undefined) $('loadBar').style.width = (frac * 100) + '%';
 }
-$('openBtn').onclick = () => { if (!busy) $('loader').style.display = 'flex'; };
+function showLoader() {
+  let any = false;
+  try { any = Object.keys(localStorage).some(k => k.startsWith('cropstudio:')); } catch (e) {}
+  $('freshRow').style.display = any ? 'flex' : 'none';
+  $('loader').style.display = 'flex';
+}
+$('openBtn').onclick = () => { if (!busy) showLoader(); };
 $('drop').onclick = () => { if (!busy) $('videoFile').click(); };
 $('videoFile').onchange = () => { const f = $('videoFile').files[0]; $('videoFile').value = ''; if (f) openVideo(f); };
 ['dragenter', 'dragover'].forEach(ev => window.addEventListener(ev, e => {
   e.preventDefault(); $('drop').classList.add('over');
-  if ($('loader').style.display === 'none' && !busy) $('loader').style.display = 'flex';
+  if ($('loader').style.display === 'none' && !busy) showLoader();
 }));
 ['dragleave', 'drop'].forEach(ev => window.addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
 window.addEventListener('drop', e => { const f = e.dataTransfer?.files?.[0]; if (f && !busy) openVideo(f); });
@@ -1253,7 +1271,7 @@ async function openVideo(file, {fresh = false} = {}) {
     undoStack.length = redoStack.length = 0; updateUndoButtons();
     $('resultList').innerHTML = ''; $('resultVideo').style.display = 'none'; $('exportStatus').textContent = '';
 
-    let saved = fresh ? null : loadStored();
+    let saved = (fresh || $('freshChk').checked) ? null : loadStored();
     if (saved && Math.abs((saved.duration || 0) - duration) > 1.0) saved = null;
     let boundaries;
     if (saved) {
@@ -1276,9 +1294,10 @@ async function openVideo(file, {fresh = false} = {}) {
       video.addEventListener('error', () => rej(new Error(
         'This browser can analyze the file but not play it back. Try Chrome/Edge or the desktop app.')), {once: true});
     });
-    renderTimeline(); renderSide(); renderRanges(); renderIo();
+    renderTimeline(); renderSide(); renderRanges(); renderIo(); renderPreviewTitle();
     $('loader').style.display = 'none';
     loadMsg('', 0);
+    $('freshChk').checked = false;
     doSave();
     $('saveState').textContent = saved ? '✓ Restored your saved edits' : (faceDetector ? '' : 'Face detection unavailable — framed on detail');
   } catch (e) {
@@ -1289,6 +1308,16 @@ async function openVideo(file, {fresh = false} = {}) {
     busy = false;
   }
 }
+$('clearAllBtn').onclick = () => {
+  if (!project || !segs().length) return;
+  pushUndo();
+  segs().forEach(s => {
+    s.keyframes = [{t: s.start, c: s.auto_c ?? 0.5, y: 0.5, z: 1}];
+    delete s.track_job;
+  });
+  scheduleSave(); renderSide(); renderTimelineKfs();
+  $('saveState').textContent = 'All crop positions reset (Ctrl+Z to undo)';
+};
 $('reanalyzeBtn').onclick = () => {
   if (!src || busy) return;
   if (!confirm('Re-detect cuts and framing? This replaces your current edits (download a project file first to keep them).')) return;
@@ -1308,9 +1337,20 @@ function sliceAudio(buf, from, to) {   // AudioBuffer restricted to [from, to) s
 }
 const safeName = name => (String(name).replace(/[^\w\- ]/g, '').trim().replace(/ /g, '_')) || 'short';
 
+function outputSize(key) {
+  // At least the 1080-wide preset; larger when the source crop has more pixels (e.g. 4K -> 1216x2160 at 9:16).
+  const [pw, ph] = ASPECTS[key] || ASPECTS['9:16'];
+  if (!project) return [pw, ph];
+  const asp = pw / ph, {width: w, height: h} = project.meta;
+  const cropH = Math.min(w, h * asp) / asp;
+  if (cropH <= ph) return [pw, ph];
+  const even = v => 2 * Math.round(v / 2);
+  return [even(cropH * asp), even(cropH)];
+}
+
 async function exportJob(job, onFrame) {
   const {vtrack, atrack} = src, {width: srcW, height: srcH} = project.meta;
-  const [TW, TH] = ASPECTS[job.aspect] || ASPECTS['9:16'];
+  const [TW, TH] = outputSize(job.aspect);
   const asp = TW / TH;
   const segList = structuredClone(segs());
   const vcodec = await MB.getFirstEncodableVideoCodec(['avc', 'vp9', 'av1', 'hevc'], {width: TW, height: TH});

@@ -133,6 +133,10 @@
                     font-variant-numeric: tabular-nums; }
   .kfpanel .kfrow button { background: none; border: none; color: var(--dim); cursor: pointer; }
   .kfpanel .actions { display: flex; gap: 8px; margin-top: 6px; }
+  .card h2 .h2key { margin-left: auto; background: var(--key); border: 1px solid var(--keyline); color: var(--muted);
+                    border-radius: 7px; padding: 2px 8px; cursor: pointer; box-shadow: 0 2px 0 var(--keyshadow);
+                    font: 500 9px 'IBM Plex Mono', monospace; letter-spacing: .08em; text-transform: lowercase; }
+  .card h2 .h2key:hover { border-color: var(--muted); color: var(--text); }
   .kfpanel .actions button { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
                              border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
   .previewCard { align-items: center; }
@@ -429,7 +433,7 @@
 
   <div class="side">
     <div class="card" style="flex:1 0 auto; min-height:230px; max-height:34vh">
-      <h2>Crop Positions <span class="count" id="segCount">0</span></h2>
+      <h2>Crop Positions <button id="clearAllBtn" class="h2key" title="Reset every segment to its auto-framed position (removes all keyframes, zoom and manual moves)">clear all</button><span class="count" id="segCount" style="margin-left:8px">0</span></h2>
       <div id="segList"></div>
       <div class="kfpanel" id="kfPanel"></div>
     </div>
@@ -635,6 +639,16 @@ function updateUndoButtons() {
   $('redoBtn').disabled = !redoStack.length;
 }
 $('undoBtn').onclick = undo;
+$('clearAllBtn').onclick = () => {
+  if (!project || !segs().length) return;
+  pushUndo();
+  segs().forEach(s => {   // back to auto-framing; outpaint jobs are kept
+    s.keyframes = [{t: s.start, c: s.auto_c ?? 0.5, y: 0.5, z: 1}];
+    delete s.track_job;
+  });
+  scheduleSave(); renderSide(); renderTimelineKfs();
+  $('saveState').textContent = 'All crop positions reset (Ctrl+Z to undo)';
+};
 $('redoBtn').onclick = redo;
 
 function doSave() {
