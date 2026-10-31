@@ -245,9 +245,11 @@
   /* --- header: brand + status row --- */
   header { align-items: center; padding: 12px 18px 8px; gap: 12px; }
   header h1 { font: 800 13px 'Archivo', sans-serif; letter-spacing: .32em; color: var(--text);
-              display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
-  header h1::before { content: ''; width: 7px; height: 7px; border-radius: 50%;
-                      background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+              white-space: nowrap; cursor: default; }
+  /* the version: only while the title is hovered */
+  .brand-ver { font: 500 9px 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .08em; color: var(--dim);
+               white-space: nowrap; opacity: 0; transition: opacity .15s; }
+  header h1:hover + .brand-ver, .brand-ver:hover { opacity: 1; }
   header .hint { font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: lowercase; }
   #saveState { font-size: 9px !important; letter-spacing: .1em; }
 
@@ -374,8 +376,8 @@
 </head>
 <body>
 <header>
-  <h1>CROP STUDIO</h1>
-  <span class="hint">position the crop &middot; segments come from detected cuts &middot; <span id="ver" style="opacity:.6"></span></span>
+  <h1>CROP STUDIO</h1><span id="ver" class="brand-ver"></span>
+  <span class="hint">position the crop &middot; segments come from detected cuts</span>
   <span class="spacer"></span>
   <button id="undoBtn" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
   <button id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>
@@ -497,7 +499,7 @@
 
 <div id="loader">
   <div class="box">
-    <h2>CROP STUDIO <span id="verLoader" style="font-size:9px;color:var(--dim);letter-spacing:.1em"></span></h2>
+    <h2>CROP STUDIO</h2>
     <p>Pick a video from this machine. Cuts are detected automatically and each
        segment gets an auto-framed 9:16 crop (faces prioritized). Adjust, then export.</p>
     <input id="pathInput" placeholder="C:\Users\User\Downloads\my_video.mp4  (or use Browse)" spellcheck="false">
@@ -1218,6 +1220,17 @@ $('zoomSlider').addEventListener('input', () => {
   $('zoomVal').textContent = z.toFixed(2) + 'x';
   setCrop(video.currentTime, {z});
 });
+
+// right-click any slider: back to its default (the value written in the HTML)
+document.addEventListener('contextmenu', e => {
+  const el = e.target;
+  if (e.defaultPrevented || !(el instanceof HTMLInputElement) || el.type !== 'range' || el.disabled) return;
+  e.preventDefault();
+  if (el.value === el.defaultValue) return;
+  el.value = el.defaultValue;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+});
 $('safeBtn').onclick = () => {
   cropBox.classList.toggle('showsafe');
   $('safeBtn').classList.toggle('on');
@@ -1398,7 +1411,7 @@ async function pollExport() {
 // try to resume an existing session on refresh
 (async () => {
   const st = await (await fetch('/api/status')).json();
-  if (st.version) { $('ver').textContent = 'v' + st.version; $('verLoader').textContent = 'v' + st.version; }
+  if (st.version) $('ver').textContent = 'v' + st.version;
   if (st.phase === 'ready' || st.phase === 'done') {
     project = {meta: st.meta, segments: st.segments, ranges: st.ranges || []};
     video.src = '/video?ts=' + Date.now();

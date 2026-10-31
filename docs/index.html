@@ -234,9 +234,11 @@
   /* --- header: brand + status row --- */
   header { align-items: center; padding: 12px 18px 8px; gap: 12px; }
   header h1 { font: 800 13px 'Archivo', sans-serif; letter-spacing: .32em; color: var(--text);
-              display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
-  header h1::before { content: ''; width: 7px; height: 7px; border-radius: 50%;
-                      background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+              white-space: nowrap; cursor: default; }
+  /* the version: only while the title is hovered */
+  .brand-ver { font: 500 9px 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .08em; color: var(--dim);
+               white-space: nowrap; opacity: 0; transition: opacity .15s; }
+  header h1:hover + .brand-ver, .brand-ver:hover { opacity: 1; }
   header .hint { font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: lowercase; }
   #saveState { font-size: 9px !important; letter-spacing: .1em; }
 
@@ -1118,6 +1120,17 @@ $('zoomSlider').addEventListener('input', () => {
   const z = +$('zoomSlider').value;
   $('zoomVal').textContent = z.toFixed(2) + 'x';
   setCrop(video.currentTime, {z});
+});
+
+// right-click any slider: back to its default (the value written in the HTML)
+document.addEventListener('contextmenu', e => {
+  const el = e.target;
+  if (e.defaultPrevented || !(el instanceof HTMLInputElement) || el.type !== 'range' || el.disabled) return;
+  e.preventDefault();
+  if (el.value === el.defaultValue) return;
+  el.value = el.defaultValue;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
 });
 $('safeBtn').onclick = () => {
   cropBox.classList.toggle('showsafe');
