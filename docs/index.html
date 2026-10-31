@@ -239,6 +239,8 @@
   .brand-ver { font: 500 9px 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: .08em; color: var(--dim);
                white-space: nowrap; opacity: 0; transition: opacity .15s; }
   header h1:hover + .brand-ver, .brand-ver:hover { opacity: 1; }
+  /* the green LED before every JAS.BLACK tool title */
+  header h1{display:inline-flex;align-items:center;gap:10px}header h1::before{content:'';flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
   header .hint { font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: lowercase; }
   #saveState { font-size: 9px !important; letter-spacing: .1em; }
 
