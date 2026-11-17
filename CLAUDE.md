@@ -34,6 +34,13 @@ click-to-track, Whisper captions, and LLM-suggested shorts with hook-structure e
 - `split_scenes.py`, `export_frames.py` — standalone CLIs: cut-splitting; green-padded
   9:16 frame export for outpaint workflows.
 - `static/index.html` — the whole UI.
+- **Family look (both UIs, Nov 2026 rules):** one interface purple `#8b6cff` (`--accent2`/`--blue`;
+  filled progress bars run as a gradient `#8b6cff` → `#c855f5`, `--accent3`), green `#39ff88`. Right-click
+  returns any setting to its page-load value (zoom slider, aspect selects — a short's own aspect goes back
+  to the main one — checkboxes, number fields, the Safe zones toggle); action keys keep the normal menu.
+  The case carries the family dot grid (a baked 16 px tile, `--dotgrid`, never a CSS gradient). A
+  key-hint bar (`.keys`, as in Align) sits under the timeline and lists the real keydown shortcuts;
+  hidden on touch phones. No numbered step badges (the tool has no easy mode).
 - `docs/` — browser-only web version (GitHub Pages, crop.jas.black): a port of
   `static/index.html` where Flask calls are replaced by Mediabunny (WebCodecs decode/encode,
   `docs/vendor/`) and MediaPipe BlazeFace. Ports of `detail_center`, `frame_center`,

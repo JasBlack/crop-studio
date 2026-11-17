@@ -34,7 +34,7 @@
     --key: #222326; --keyon: #1b1c1e; --keyline: #303135; --keyshadow: #070708;
     --press: rgba(0,0,0,.5); --well: #141517; --ledoff: #34353a;
     --text: #e4e4e1; --dim: #6f7074; --muted: #8c8c88;
-    --accent: #39ff88; --accent2: #b36bff; --blue: #b36bff;
+    --accent: #39ff88; --accent2: #8b6cff; --accent3: #c855f5; --blue: #8b6cff;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
@@ -310,7 +310,7 @@
   #preview, #resultVideo { border: 1px solid var(--keyline); background: var(--well);
                            box-shadow: inset 0 2px 6px rgba(0,0,0,.6); }
   .bar { background: var(--well); box-shadow: inset 0 1px 3px rgba(0,0,0,.6); border-radius: 4px; height: 7px; }
-  .bar i { background: linear-gradient(90deg, color-mix(in srgb, var(--accent2) 80%, #000), var(--accent2));
+  .bar i { background: linear-gradient(90deg, var(--accent2), var(--accent3));
            box-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 50%, transparent); border-radius: 4px; }
   #exportBar i { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, #000), var(--accent));
            box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -355,6 +355,18 @@
     .transport { flex-wrap: wrap; }
     .side { width: auto; overflow: visible; }
   }
+  /* --- dot grid on the case (family option B: 16 px, fine and faint). A baked 32 px tile drawn
+     at 16 px, never a live CSS gradient (those shimmer on macOS). The stage well stays plain. --- */
+  :root { --dotgrid:url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAATElEQVR42u3OOQrAQAxDUSlp5v6ndROcRhcYM6TJf+DCAi8SAAB/5+lgd9+SVtqy/Uz2XMPjznGnVrJvHjhp9IDtllSSOlXJAADAthcsBBEI93xN9gAAAABJRU5ErkJggg=='); --dotsize: 16px 16px; }
+  body { background: var(--dotgrid) 0 0/var(--dotsize), var(--case); }
+
+  /* --- key hints along the bottom of the main column (family; as in align.jas.black) --- */
+  .keys { flex: none; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+          font: 8.5px 'IBM Plex Mono', ui-monospace, monospace; color: var(--muted); letter-spacing: .08em; }
+  kbd { display: inline-block; min-width: 14px; padding: 0 4px; margin: 0 1px; border-radius: 3px; text-align: center;
+        border: 1px solid var(--keyline); background: var(--key); box-shadow: 0 1px 0 var(--keyshadow);
+        font: 500 8.5px/14px 'IBM Plex Mono', ui-monospace, monospace; color: var(--text); }
+  @media (hover: none) and (pointer: coarse) { .keys { display: none; } }
 </style>
 </head>
 <body>
@@ -413,6 +425,10 @@
         <div id="rangeStrip"></div>
         <div id="timeline"><div id="playhead"></div></div>
       </div></div>
+    </div>
+    <div class="keys" id="shortcuts">
+      <span><kbd>space</kbd> play &middot; <kbd>&larr;</kbd><kbd>&rarr;</kbd> frame &middot; <kbd>&uarr;</kbd><kbd>&darr;</kbd> segment &middot; <kbd>I</kbd> in &middot; <kbd>O</kbd> out &middot; <kbd>ctrl</kbd>+<kbd>Z</kbd> undo &middot; <kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>Z</kbd> redo &middot; <kbd>ctrl</kbd>+<kbd>S</kbd> save</span>
+      <span>right-click a setting resets it</span>
     </div>
   </div>
 
@@ -480,7 +496,7 @@ const REPO_URL = 'https://github.com/JasBlack/crop-studio';
 document.querySelectorAll('.repo-link').forEach(a => a.href = REPO_URL);
 
 const $ = id => document.getElementById(id);
-const COLORS = ['#22c55e','#3b82f6','#a855f7','#f97316','#ec4899','#14b8a6','#eab308','#ef4444'];
+const COLORS = ['#22c55e','#3b82f6','#8b6cff','#f97316','#ec4899','#14b8a6','#eab308','#ef4444'];
 const ASPECTS = {'9:16': [1080, 1920], '1:1': [1080, 1080], '4:5': [1080, 1350]};
 const video = $('video'), stage = $('stage'), cropBox = $('cropBox');
 let project = null;      // {meta, segments, ranges}
@@ -1124,13 +1140,27 @@ $('zoomSlider').addEventListener('input', () => {
   setCrop(video.currentTime, {z});
 });
 
-// right-click any slider: back to its default (the value written in the HTML)
+// right-click any setting: back to its default (its state once the page loaded) — family rule.
+// Sliders, selects, checkboxes, number fields and toggle keys (.on); action keys (and the
+// snapshot loader, which is an action) keep the normal menu. A short's own aspect returns
+// to the main output aspect. The reset fires the same events a user's change does.
+const TOGGLES = ['safeBtn'];
+const settingDefs = new Map();
+const settingVal = el => el.type === 'checkbox' ? el.checked : el.value;
+document.querySelectorAll('input[type=range], input[type=checkbox], input[type=number], select:not(#projectSel)')
+  .forEach(el => settingDefs.set(el, settingVal(el)));
+TOGGLES.forEach(id => settingDefs.set($(id), $(id).classList.contains('on')));
 document.addEventListener('contextmenu', e => {
-  const el = e.target;
-  if (e.defaultPrevented || !(el instanceof HTMLInputElement) || el.type !== 'range' || el.disabled) return;
+  if (e.defaultPrevented || !(e.target instanceof Element)) return;
+  const tg = TOGGLES.map($).find(b => b.contains(e.target));
+  if (tg) { e.preventDefault(); if (tg.classList.contains('on') !== settingDefs.get(tg)) tg.click(); return; }
+  const el = e.target.closest('input, select') || e.target.closest('label')?.control;
+  if (!el || el.disabled) return;
+  const d = el.classList.contains('rasp') ? aspectKey : settingDefs.get(el);
+  if (d === undefined) return;
   e.preventDefault();
-  if (el.value === el.defaultValue) return;
-  el.value = el.defaultValue;
+  if (settingVal(el) === d) return;
+  if (typeof d === 'boolean') el.checked = d; else el.value = d;
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 });

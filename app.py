@@ -38,7 +38,7 @@ from crop_vertical import DEFAULT_FACE_MODEL, detail_center, load_face_detector
 import outpaint
 import tracker
 
-VERSION = "0.7.0"  # AI shorts suggestions + hook-structure exports
+VERSION = "0.7.1"  # family rules: one purple, right-click resets any setting, dot grid, key hints
 PORT = 5124
 
 app = Flask(__name__, static_folder="static", static_url_path="")
